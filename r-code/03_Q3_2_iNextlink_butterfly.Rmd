@@ -1,0 +1,222 @@
+---
+title: "iNEXT link - Butterfly-plant-interactions"
+author: "Bernd Panassiti"
+date: 'created: 20.01.2022, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+opts_chunk$set(fig.align='center',                # aligns all figures
+                echo=TRUE,                        # shows r-code
+                message=FALSE,                    # suppresses library outputs
+                warnings=FALSE,                   # suppresses library outputs
+                tidy=TRUE,  # prevents the source code from running off a pdf page
+                dev='pdf')                        # pdf device
+```
+
+
+# Introduction
+This script calculates alpha-diversity using taxonomic (TD), phylogenetic (PD) and functional (FD) information on butterfly-plant networks.
+
+Useful links:
+http://chao.stat.nthu.edu.tw/wordpress/software_download/inext-link/
+https://github.com/AnneChao/iNEXT.link
+http://chao.stat.nthu.edu.tw/wordpress/wp-content/uploads/software/A%20Quick%20Introduction%20to%20iNEXT.link%20via%20Examples.html
+
+
+# Loading data and packages
+Install the following packages from Anne Chao's github
+library(devtools)
+
+install_github('AnneChao/iNEXT.3D')
+install_github('AnneChao/iNEXT.4steps')
+install_github('AnneChao/iNEXT.beta3D')
+install_github('AnneChao/iNEXT.link')
+
+```{r}
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load("iNEXT.link","iNEXT.3D","ggplot2","dplyr","magrittr")
+
+source("r-code/00_functions.R")
+load("data/workingdata.RData")
+```
+
+# Data preparation
+
+```{r}
+pTraits = pollinatorPlantTraits[,-1] # only remove id column, not species column
+iTraits = butterflyTraits[,-1] # only remove id column, not species column
+iTree = butterflyTreeNet
+pTree = plantTreeNet
+
+out = iNext.link.dataprep(cooccDF = butterfly.coocc[1:3],
+                          nTreatments = 3, 
+                          iTree = iTree, pTree = pTree,
+                          iTraitDF = iTraits, pTraitDF = pTraits)
+```
+
+Information on TD input data
+35  unique insect species and  21  unique plant species
+
+
+Information on PD input data
+Are all insect species of coocc dataset in insect tree:  TRUE 
+
+Are all plant species of coocc dataset in plant tree:  TRUE 
+
+
+Information on FD input data
+Number of insect species in coocc dataset:  31 
+Number of insect species in trait matrix:  31 
+Are insect species in coocc and trait matrix identical?  TRUE 
+
+Number of plant species in coocc dataset:  17 
+Number of plant species in trait matrix:  17 
+Are plant species in coocc and trait matrix identical?  TRUE 
+
+
+# Alpha network diversity using iNext.link
+
+## Taxonomic network diversity (TD)
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+butterfly.iNEXT.TD = iNEXT.link(data = out$cooccTD, diversity = 'TD', 
+                          q = c(0),nboot = 30,knots=100)
+
+butterfly.est.TD = estimateD.link(out$cooccTD, 
+                                  q = c(0), 
+                                  base = "coverage",
+                                  level = seq(0,1,0.05),
+                                  nboot = 30)
+
+butterfly.plot.TD = butterfly.iNEXT.TD
+butterfly.plot.TD$TDiNextEst$coverage_based = rbind(
+      butterfly.iNEXT.TD$TDiNextEst$coverage_based, 
+      butterfly.est.TD %>% dplyr::select(-"s.e.") %>%
+        dplyr::filter(SC==0.7))
+
+
+butterfly.plot.TD$TDiNextEst$coverage_based %<>% filter(SC<=0.7)
+
+ggiNEXT.TD = ggiNEXT3D(butterfly.plot.TD, type=3,facet.var = "None",color.var ="Assemblage")
+
+butterfly.cov.TD = ggiNEXT.TD + 
+  scale_colour_manual(values = c('blue', 'red','green')) +
+  scale_fill_manual(values = c('blue', 'red','green')) + 
+  ggtitle("(a) Taxonomic network diversity") + ylab("Taxonomic network diversity") + 
+  theme(legend.position = "bottom", plot.title = element_text(color = "blue", size = 25)) + 
+  coord_cartesian(xlim = c(0.3,0.7));butterfly.cov.TD 
+```
+
+
+
+##  Phylogenetic network diversity (PD)
+1 error source: tidytree
+https://support.bioconductor.org/p/9153297/#9153321
+
+solution:
+if(!require("tidytree", quietly=TRUE))
+  devtools::install_version("tidytree", version = "0.4.2")
+  
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+butterfly.iNEXT.PD = iNEXT.link(data = out$cooccPD, diversity = 'PD', 
+                           q = 0, nboot = 30, 
+                          col.tree = out$iTree,
+                          row.tree = out$pTree)
+
+butterfly.est.PD = estimateD.link(out$cooccPD, diversity = "PD",
+                            q = 0, base = "coverage", 
+                            level = seq(0,1,0.05), 
+                            nboot = 30,
+                            col.tree = out$iTree,
+                            row.tree = out$pTree)
+
+butterfly.plot.PD = butterfly.iNEXT.PD
+
+butterfly.plot.PD$PDiNextEst$coverage_based = rbind(butterfly.iNEXT.PD$PDiNextEst$coverage_based,
+        butterfly.est.PD %>% select(-"s.e.") %>% dplyr::filter(SC==0.7))
+
+
+butterfly.plot.PD$PDiNextEst$coverage_based %<>% filter(SC<=0.7)
+
+ggiNEXT.PD = ggiNEXT3D(butterfly.plot.PD, type=3,facet.var = "None",color.var ="Assemblage")
+
+butterfly.cov.PD = ggiNEXT.PD + 
+  scale_colour_manual(values = c('blue', 'red','green')) +
+  scale_fill_manual(values = c('blue', 'red','green')) + 
+  ggtitle("(b) Phylogenetic network diversity") + ylab("Phylogenetic network diversity") + 
+  theme(legend.position = "bottom", plot.title = element_text(color = "blue", size = 25)) + 
+  coord_cartesian(xlim = c(0.3,0.7));butterfly.cov.PD
+```
+
+##Functional network diversity (FD)
+
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+butterfly.iNEXT.FD = iNEXT.link(data = out$cooccFD, diversity = 'FD', q = 0, nboot = 30, 
+                          col.distM = out$iTraits.gwd,
+                          row.distM = out$pTraits.gwd)
+
+butterfly.est.FD = estimateD.link(out$cooccFD, diversity = "FD", q = 0, base = "coverage", 
+                          level = seq(0,1,0.05),
+                          nboot = 30, 
+                          col.distM = out$iTraits.gwd,
+                          row.distM = out$pTraits.gwd)
+
+butterfly.plot.FD = butterfly.iNEXT.FD 
+
+butterfly.plot.FD$FDiNextEst$coverage_based = rbind(butterfly.iNEXT.FD$FDiNextEst$coverage_based,
+        butterfly.est.FD %>% select(-"s.e.") %>% dplyr::filter(SC==0.7))
+
+
+butterfly.plot.FD$FDiNextEst$coverage_based %<>% filter(SC<=0.7)
+
+ggiNEXT.FD = ggiNEXT3D(butterfly.plot.FD, type=3,facet.var = "None",color.var ="Assemblage")
+
+butterfly.cov.FD = ggiNEXT.FD + 
+  scale_colour_manual(values = c('blue', 'red','green')) +
+  scale_fill_manual(values = c('blue', 'red','green')) + 
+  ggtitle("(c) Functional network diversity") + ylab("Functional network diversity") +
+  theme(plot.title = element_text(color = "blue", size = 25)) + 
+  coord_cartesian(xlim = c(0.3,0.7))
+```
+
+
+
+
+
+# Save results
+```{r}
+save(out,
+  butterfly.iNEXT.TD,
+  butterfly.est.TD,
+  butterfly.cov.TD,
+  butterfly.iNEXT.PD,
+  butterfly.est.PD,
+  butterfly.cov.PD,
+  butterfly.iNEXT.FD,
+  butterfly.est.FD,
+  butterfly.cov.FD,
+  file="results/Q2_butterfly_iNext.link.RData"
+)
+```
+
+
+
+

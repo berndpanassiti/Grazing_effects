@@ -1,0 +1,280 @@
+---
+title: "Model diagnostics"
+author: "Bernd Panassiti"
+date: 'created: 07.06.2023, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+opts_chunk$set(fig.align='center',                # aligns all figures
+                echo=TRUE,                        # shows r-code
+                message=FALSE,                    # suppresses library outputs
+                warnings=FALSE,                   # suppresses library outputs
+                tidy=TRUE,  # prevents the source code from running off a pdf page
+                dev='pdf')                        # pdf device
+```
+
+# Introduction
+Things to consider when checking residuals: 1) random effects are not considered 2) once an residual effect is statistically significant, look the magnitude to decide if there is a problem
+
+<https://cran.r-project.org/web/packages/DHARMa/vignettes/DHARMa.html#general-remarks-on-interperting-residual-patterns-and-tests>
+
+
+
+# Loading of packages and data
+
+```{r loading_data, include=FALSE}
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load(tidyverse,magrittr,caret,ggplot2,DHARMa,broom.mixed,
+       posterior,ggdist,tidybayes,pryr,bayesplot,ggpubr,grid,gridExtra,
+       emmeans,broom, broom.mixed,
+       posterior,brms,bayesplot,ggpubr,
+       hrbrthemes,patchwork,# additional themes
+       GGally) # ggpairs
+
+source("r-code/00_functions.R")
+
+load("results/modelResults.RData")
+mySeed = 2024
+```
+
+
+
+# Insect model - Management predictors
+```{r}
+Q1_model_results = c(modelResultsTDManagement,modelResultsFDManagement,modelResultsPDManagement)
+```
+
+## MCMC chains
+```{r}
+# Trace and Density Plots for MCMC Draws for Chain convergence
+#plot(model_results[[i]],ask=F) # difficult to as title to plot.brmsfit
+
+pdf(file=paste("figures/",gsub("-",".",Sys.Date()),"-Q1 - insectManagement - Trace_density_MCMCdraws.pdf",sep=""),w= 8, h=10)
+
+for (i in 1:length(Q1_model_results)){
+ 
+  g1=bayesplot::mcmc_dens(Q1_model_results[[i]],
+                          pars=c("b_Intercept","b_elevationScaled",
+                                 "b_surveyPeriod1:grazingTimeearly",
+                                 "b_surveyPeriod2:grazingTimeearly",
+                                 "b_surveyPeriod1:grazingTimelate",
+                                 "b_surveyPeriod2:grazingTimelate"),
+                facet_args = list(ncol = 1, strip.position = "left"))
+  
+  g2=bayesplot::mcmc_trace(Q1_model_results[[i]],
+                           pars=c("b_Intercept","b_elevationScaled",
+                                 "b_surveyPeriod1:grazingTimeearly",
+                                 "b_surveyPeriod2:grazingTimeearly",
+                                 "b_surveyPeriod1:grazingTimelate",
+                                 "b_surveyPeriod2:grazingTimelate"),
+                facet_args = list(ncol = 1, strip.position = "left"))
+  
+MCMCplot<- ggpubr::ggarrange(g1,g2, ncol=2)
+
+print(ggpubr::annotate_figure(MCMCplot, top = ggpubr::text_grob(paste(names(Q1_model_results[i])," - Density and tract plots of MCMC draws",sep=""), color = "darkblue", face = "bold", size = 14)))
+
+}
+dev.off()
+```
+
+Chains look converged.
+
+## DHARMa residual checks
+
+```{r}
+rm(.Random.seed, envir=globalenv())
+
+# Residual checks
+# sample from the Posterior Predictive Distribution
+pdf(paste("figures/",gsub("-",".",Sys.Date()),"-Q1 - insectManagement - Residual_check.pdf",sep=""),w= 8, h=10)
+for (i in 1:length(Q1_model_results)){
+preds <- posterior_predict(Q1_model_results[[i]], ndraws = 250, summary = FALSE,seed=mySeed)
+preds <- t(preds)
+
+res <- createDHARMa(simulatedResponse = preds, 
+                    fittedPredictedResponse = apply(preds, 1, median), 
+                    observedResponse = Q1_model_results[[i]]$data[[1]],
+                    seed=mySeed)
+
+#resSim = simulateResiduals(brm.1)
+#testResiduals(res)
+p2 %<a-% {plot(res,title=paste(names(Q1_model_results[i])," - DHARMa resdidual",sep=""))}
+p2
+
+}
+dev.off()
+```
+
+Residuals looks ok.
+
+
+
+# Vegetation model - Management predictors
+```{r}
+Q1_model_results = modelResultsVegManagement
+```
+
+## MCMC chains
+```{r}
+# Trace and Density Plots for MCMC Draws for Chain convergence
+#plot(model_results[[i]],ask=F) # difficult to as title to plot.brmsfit
+
+pdf(file=paste("figures/",gsub("-",".",Sys.Date()),"-Q1 - vegManagement - Trace_density_MCMCdraws.pdf",sep=""),w= 8, h=10)
+
+for (i in 1:length(Q1_model_results)){
+ 
+  g1=bayesplot::mcmc_dens(Q1_model_results[[i]],
+                          pars=c("b_Intercept","b_elevationScaled",
+                                 "b_surveyPeriod1:grazingTimeearly",
+                                 "b_surveyPeriod2:grazingTimeearly",
+                                 "b_surveyPeriod1:grazingTimelate",
+                                 "b_surveyPeriod2:grazingTimelate"),
+                facet_args = list(ncol = 1, strip.position = "left"))
+  
+  g2=bayesplot::mcmc_trace(Q1_model_results[[i]],
+                           pars=c("b_Intercept","b_elevationScaled",
+                                 "b_surveyPeriod1:grazingTimeearly",
+                                 "b_surveyPeriod2:grazingTimeearly",
+                                 "b_surveyPeriod1:grazingTimelate",
+                                 "b_surveyPeriod2:grazingTimelate"),
+                facet_args = list(ncol = 1, strip.position = "left"))
+  
+MCMCplot<- ggpubr::ggarrange(g1,g2, ncol=2)
+
+print(ggpubr::annotate_figure(MCMCplot, top = ggpubr::text_grob(paste(names(Q1_model_results[i])," - Density and tract plots of MCMC draws",sep=""), color = "darkblue", face = "bold", size = 14)))
+
+}
+dev.off()
+```
+
+Chains look converged.
+
+## DHARMa residual checks
+
+```{r}
+rm(.Random.seed, envir=globalenv())
+
+# Residual checks
+# sample from the Posterior Predictive Distribution
+pdf(paste("figures/",gsub("-",".",Sys.Date()),"-Q1 - vegManagement - Residual_check.pdf",sep=""),w= 8, h=10)
+for (i in 1:length(Q1_model_results)){
+preds <- posterior_predict(Q1_model_results[[i]], ndraws = 250, summary = FALSE,seed=mySeed)
+preds <- t(preds)
+
+res <- createDHARMa(simulatedResponse = preds, 
+                    fittedPredictedResponse = apply(preds, 1, median), 
+                    observedResponse = Q1_model_results[[i]]$data[[1]],
+                    seed=mySeed)
+
+#resSim = simulateResiduals(brm.1)
+#testResiduals(res)
+p2 %<a-% {plot(res,title=paste(names(Q1_model_results[i])," - DHARMa resdidual",sep=""))}
+p2
+
+}
+dev.off()
+```
+
+Residuals looks ok.
+
+
+# Insect model - Vegetation predictors
+```{r}
+Q1_model_results = c(modelResultsTDVegetation,modelResultsFDVegetation,modelResultsPDVegetation)
+```
+
+## MCMC chains
+```{r}
+# Trace and Density Plots for MCMC Draws for Chain convergence
+#plot(model_results[[i]],ask=F) # difficult to as title to plot.brmsfit
+
+pdf(file=paste("figures/",gsub("-",".",Sys.Date()),"-Q1 - insectVegetation - Trace_density_MCMCdraws.pdf",sep=""),w= 8, h=10)
+
+for (i in 1:length(Q1_model_results)){
+  
+  if (i %in% c(1,2,4,5,7,8)){
+  g1=bayesplot::mcmc_dens(Q1_model_results[[i]],
+                          pars=c("b_Intercept","b_elevationScaled",
+                                 "b_surveyPeriod1:nPlantSpecies",
+                                 "b_surveyPeriod2:nPlantSpecies",
+                                 "b_surveyPeriod1:coverHerbs",
+                                 "b_surveyPeriod2:coverHerbs",
+                                 "b_surveyPeriod1:nInflorescenceCoocc",
+                                 "b_surveyPeriod2:nInflorescenceCoocc"),
+                facet_args = list(ncol = 1, strip.position = "left"))
+  
+  g2=bayesplot::mcmc_trace(Q1_model_results[[i]],
+                           pars=c("b_Intercept","b_elevationScaled",
+                                 "b_surveyPeriod1:nPlantSpecies",
+                                 "b_surveyPeriod2:nPlantSpecies",
+                                 "b_surveyPeriod1:coverHerbs",
+                                 "b_surveyPeriod2:coverHerbs",
+                                 "b_surveyPeriod1:nInflorescenceCoocc",
+                                 "b_surveyPeriod2:nInflorescenceCoocc"),
+                facet_args = list(ncol = 1, strip.position = "left"))}  else{
+  g1=bayesplot::mcmc_dens(Q1_model_results[[i]],
+                          pars=c("b_Intercept","b_elevationScaled",
+                                 "b_surveyPeriod1:height",
+                                 "b_surveyPeriod2:height",
+                                 "b_surveyPeriod1:coverHerbs",
+                                 "b_surveyPeriod2:coverHerbs",
+                                 "b_surveyPeriod1:biomass",
+                                 "b_surveyPeriod2:biomass"),
+                facet_args = list(ncol = 1, strip.position = "left"))
+  
+  g2=bayesplot::mcmc_trace(Q1_model_results[[i]],
+                           pars=c("b_Intercept","b_elevationScaled",
+                                 "b_surveyPeriod1:height",
+                                 "b_surveyPeriod2:height",
+                                 "b_surveyPeriod1:coverHerbs",
+                                 "b_surveyPeriod2:coverHerbs",
+                                 "b_surveyPeriod1:biomass",
+                                 "b_surveyPeriod2:biomass"),
+                facet_args = list(ncol = 1, strip.position = "left"))}
+
+MCMCplot<- ggpubr::ggarrange(g1,g2, ncol=2)
+
+print(ggpubr::annotate_figure(MCMCplot, top = ggpubr::text_grob(paste(names(Q1_model_results[i])," - Density and tract plots of MCMC draws",sep=""), color = "darkblue", face = "bold", size = 14)))
+
+}
+dev.off()
+```
+
+Chains look converged.
+
+## DHARMa residual checks
+
+```{r}
+rm(.Random.seed, envir=globalenv())
+
+# Residual checks
+# sample from the Posterior Predictive Distribution
+pdf(paste("figures/",gsub("-",".",Sys.Date()),"-Q1 - insectVegetation - Residual_check.pdf",sep=""),w= 8, h=10)
+for (i in 1:length(Q1_model_results)){
+preds <- posterior_predict(Q1_model_results[[i]], ndraws = 250, summary = FALSE,seed=mySeed)
+preds <- t(preds)
+
+res <- createDHARMa(simulatedResponse = preds, 
+                    fittedPredictedResponse = apply(preds, 1, median), 
+                    observedResponse = Q1_model_results[[i]]$data[[1]],
+                    seed=mySeed)
+
+#resSim = simulateResiduals(brm.1)
+#testResiduals(res)
+p2 %<a-% {plot(res,title=paste(names(Q1_model_results[i])," - DHARMa resdidual",sep=""))}
+p2
+
+}
+dev.off()
+```
+
+Residuals looks ok.
+

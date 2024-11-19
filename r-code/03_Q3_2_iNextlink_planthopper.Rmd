@@ -1,0 +1,209 @@
+---
+title: "iNEXT link - Leafhopper-plant-interactions"
+author: "Bernd Panassiti"
+date: 'created: 20.01.2022, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+opts_chunk$set(fig.align='center',                # aligns all figures
+                echo=TRUE,                        # shows r-code
+                message=FALSE,                    # suppresses library outputs
+                warnings=FALSE,                   # suppresses library outputs
+                tidy=TRUE,  # prevents the source code from running off a pdf page
+                dev='pdf')                        # pdf device
+```
+
+
+# Introduction
+This script calculates alpha-diversity using taxonomic (TD), phylogenetic (PD) and functional (FD) information on leafhopper(=planthopper)-plant-networks.
+
+Useful links:
+http://chao.stat.nthu.edu.tw/wordpress/software_download/inext-link/
+https://github.com/AnneChao/iNEXT.link
+http://chao.stat.nthu.edu.tw/wordpress/wp-content/uploads/software/A%20Quick%20Introduction%20to%20iNEXT.link%20via%20Examples.html
+
+
+# Loading data and packages
+Install the following packages from Anne Chao's github
+library(devtools)
+
+install_github('AnneChao/iNEXT.3D')
+install_github('AnneChao/iNEXT.4steps')
+install_github('AnneChao/iNEXT.beta3D')
+install_github('AnneChao/iNEXT.link')
+
+```{r}
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load("iNEXT.link","iNEXT.3D","ggplot2","dplyr","magrittr")
+
+source("r-code/00_functions.R")
+load("data/workingdata.RData")
+```
+
+# Data preparation
+```{r}
+pTraits = planthopperPlantTraits[,-1]
+iTraits = planthopperTraits[,-1]
+
+iTree = planthopperTreeNet
+pTree = plantTreeNetZik
+
+out = iNext.link.dataprep(cooccDF = planthopper.coocc[1:3],
+                          nTreatments = 3, 
+                          iTree = iTree,   pTree = pTree,
+                          iTraitDF = iTraits, pTraitDF = pTraits)
+```
+
+
+# Alpha network diversity
+
+## Computing taxonomic network diversity using functions from iNEXT.link
+
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+planthopper.iNEXT.TD = iNEXT.link(data = out$cooccTD, diversity = 'TD', 
+                          q = 0,nboot = 30)
+
+planthopper.est.TD = estimateD.link(out$cooccTD, q = 0, 
+                            base = "coverage", 
+                            level = c(seq(0,0.9,0.05),c(0.95,0.99,1)),
+                            nboot = 30)
+
+planthopper.plot.TD = planthopper.iNEXT.TD
+planthopper.plot.TD$TDiNextEst$coverage_based = rbind(planthopper.plot.TD$TDiNextEst$coverage_based, 
+planthopper.est.TD %>% select(-"s.e.")%>%
+        dplyr::filter(SC==1))
+
+#planthopper.plot.TD$TDiNextEst$coverage_based %<>% filter(SC<=0.9)
+
+ggiNEXT.TD = ggiNEXT3D(planthopper.plot.TD, type=3,facet.var = "None",color.var ="Assemblage")
+
+planthopper.cov.TD = ggiNEXT.TD + 
+  scale_colour_manual(values = c('blue', 'red','green')) +
+  scale_fill_manual(values = c('blue', 'red','green')) + 
+  ggtitle("(a) Taxonomic network diversity") + ylab("Taxonomic network diversity") + 
+  theme(legend.position = "bottom", plot.title = element_text(color = "blue", size = 25)) + 
+  coord_cartesian(xlim = c(0.975,1));planthopper.cov.TD
+
+```
+
+
+
+
+
+##  Phylogenetic network diversity (PD)
+1 error source: tidytree
+https://support.bioconductor.org/p/9153297/#9153321
+
+solution:
+if(!require("tidytree", quietly=TRUE))
+  devtools::install_version("tidytree", version = "0.4.2")
+  
+  
+unique(unlist(lapply(out$cooccPD,function(x) colnames(x)))) %in% iTree$tip.label
+
+
+data(beetles)
+data(beetles_col_tree)
+output2 = iNEXT.link(data = beetles, diversity = 'PD', q = 0, col.tree = beetles_col_tree)
+
+  
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+planthopper.iNEXT.PD = iNEXT.link(data = out$cooccPD, diversity = 'PD', 
+                           q = 0, nboot = 30, 
+                          col.tree = out$iTree,
+                          row.tree = out$pTree)
+
+planthopper.est.PD = estimateD.link(out$cooccPD, 
+                             diversity = "PD",
+                             q = 0, base = "coverage", 
+                             level = c(seq(0,0.9,0.05),c(0.95,0.99,1)), 
+                             nboot = 30,
+                             col.tree = out$iTree,
+                             row.tree = out$pTree
+                             )
+
+planthopper.plot.PD = planthopper.iNEXT.PD
+
+
+
+ggiNEXT.PD = ggiNEXT3D(planthopper.plot.PD, type=3,facet.var = "None",color.var ="Assemblage")
+
+planthopper.cov.PD = ggiNEXT.PD + 
+  scale_colour_manual(values = c('blue', 'red','green')) +
+  scale_fill_manual(values = c('blue', 'red','green')) + 
+  ggtitle("(b) Phylogenetic network diversity") + ylab("Phylogenetic network diversity") + 
+  theme(legend.position = "bottom", plot.title = element_text(color = "blue", size = 25)) + 
+  coord_cartesian(xlim = c(0.5,1));planthopper.cov.PD
+```
+
+
+q1: clade compsition is more diverse in late in comparison to other treatments
+
+Bombus as the most specious clade has also more interactions and drive higher phylogenetic diversity in late grazed pastures
+
+
+
+##Functional network diversity (FD)
+
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+planthopper.iNEXT.FD = iNEXT.link(data = out$cooccFD, 
+                          diversity = 'FD', q = 0,
+                          nboot = 30, 
+                          col.distM = out$iTraits.gwd,
+                          row.distM = out$pTraits.gwd)
+
+planthopper.est.FD = estimateD.link(data = out$cooccFD, 
+                          diversity = "FD", q = 0, 
+                          base = "coverage", 
+                          level = c(seq(0,0.9,0.05),c(0.95,0.99,1)),
+                          nboot = 30, 
+                          col.distM = out$iTraits.gwd,
+                          row.distM = out$pTraits.gwd)
+
+planthopper.plot.FD = planthopper.iNEXT.FD 
+
+ggiNEXT.FD = ggiNEXT3D(planthopper.plot.FD, type=3,facet.var = "None",color.var ="Assemblage")
+
+planthopper.cov.FD = ggiNEXT.FD + 
+  scale_colour_manual(values = c('blue', 'red','green')) +
+  scale_fill_manual(values = c('blue', 'red','green')) + 
+  ggtitle("(c) Functional network diversity") + ylab("Functional network diversity") +
+  theme(plot.title = element_text(color = "blue", size = 25)) + 
+  coord_cartesian(xlim = c(0.975,1));planthopper.cov.FD
+```
+
+
+# Save results
+```{r}
+save(out,
+  planthopper.iNEXT.TD,
+  planthopper.est.TD,
+  planthopper.cov.TD,
+  planthopper.iNEXT.PD,
+  planthopper.est.PD,
+  planthopper.cov.PD,
+  planthopper.iNEXT.FD,
+  planthopper.est.FD,
+  planthopper.cov.FD,
+  file="results/Q2_planthopper_iNext.link.RData"
+)
+```

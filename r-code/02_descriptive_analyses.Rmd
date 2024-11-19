@@ -1,0 +1,703 @@
+---
+title: "Descriptive analyses"
+author: "Bernd Panassiti"
+date: 'created: 07.06.2023, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  html_document: default
+  pdf_document: default
+editor_options: 
+  
+  
+  chunk_output_type: console
+  header-includes:
+    \AtBeginDocument{\let\maketitle\relax}
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message = FALSE)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+options(tibble.print_max = 200, tibble.print_min = 20)
+```
+
+```{r load_packages_data, include=FALSE}
+set.seed(2022)
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load(ggplot2,tidyverse,gridExtra,iNEXT,iNEXT.3D,caret,ggforce,
+       rstatix,ggpubr,ggvenn,reshape,magrittr,plyr,ggcorrplot)
+
+source("r-code/00_functions.R")
+
+load("data/workingdata.RData")
+load("results/iNEXT3d_bee.RData")
+load("results/iNEXT3d_butterfly.RData")
+load("results/iNEXT3d_planthopper.RData")
+```
+
+
+```{r}
+sort(unique(bee.abund$species))
+sort(unique(butterfly.abund$species))
+sort(unique(planthopper.abund$species))  
+```
+
+```{r}
+beeDiversity %>% group_by(diversityType) %>% 
+  dplyr::summarise(mean=mean(estimate),
+                   sd=sd(estimate),
+                   low=min(lowCI,na.rm = TRUE),
+                   high=max(highCI,na.rm = TRUE))
+
+butterflyDiversity %>% group_by(diversityType) %>% dplyr::summarise(mean=mean(estimate),
+                 sd=sd(estimate),
+                 low=min(lowCI,na.rm = TRUE),
+                 high=max(highCI,na.rm = TRUE))
+
+planthopperDiversity %>% group_by(diversityType) %>% dplyr::summarise(mean=mean(estimate),
+                 sd=sd(estimate),
+                 low=min(lowCI,na.rm = TRUE),
+                high=max(highCI,na.rm = TRUE))
+```
+
+
+
+# Data preparation
+
+```{r}
+dfbee = beeDiversity%>% tibble::add_column(group = rep("bee",nrow(beeDiversity)))
+dfbutterfly = butterflyDiversity%>% tibble::add_column(group = rep("butterfly",nrow(butterflyDiversity)))
+dfplanthopper = planthopperDiversity%>% tibble::add_column(group = rep("planthopper",nrow(planthopperDiversity)))
+
+dfInsects = bind_rows(dfbee,dfbutterfly,dfplanthopper) %>%
+  dplyr::rename(grazing_time = grazingTime) %>%
+  dplyr::mutate(response = paste(group,diversityType,"q",qHill,sep="")) %>%
+  dplyr::select(plot_id,site_id, survey_period,year,grazing_time,response,estimate)
+
+
+#dfIns = reshape::cast(dfInsects,plot_id+site_id+survey_period+year+grazing_time ~ response)
+dfIns = dfInsects %>%
+  pivot_wider(names_from = response, values_from = estimate, values_fill = NA)
+dfIns %<>% dplyr::arrange(year,site_id,survey_period,grazing_time)
+```
+
+## Which plots have not been surveyed?
+A001: 2022
+A004: 2022, survey period 1
+A007: 2022, survey period 2
+
+A005: 2021, survey period 1 early intensive
+A008: 2021, survey period 1 late intensive
+
+All other need to be set to 0 (no species found).
+
+- missing plots for bees/butterflies from 2021 automatically filled, because planthopper sampling from 2021 complete 
+- 2 plots from 2022 were missing because neither bees or butterflies have been recorded.
+```{r}
+df = dfIns
+# bee missing zeros
+beeZero = obsTimesPollinators[which(obsTimesPollinators$bee==0),"plot_id"]
+
+#add missing plots for year 2022 for bees
+beeZeroPlotsNotInDF = beeZero[which(!beeZero %in%df$plot_id)]
+# beeZeroPlotsNotInDFins
+# [1] "A002_2_2022_early" "A007_1_2022_late" 
+
+df  = data.frame(rbind(df,
+c("A002_2_2022_early","A002",2,2022,"early",rep(NA,9)),
+c("A007_1_2022_late","A007",1,2022,"late",rep(NA,9))))
+
+df[which(df$plot_id %in% beeZero),"beeTDq0"] = 0
+df[which(df$plot_id %in% beeZero),"beePDq0"] = 0
+df[which(df$plot_id %in% beeZero),"beeFDq0"] = 0
+
+
+# butterfly missing zeros
+butterflyZero = obsTimesPollinators[which(obsTimesPollinators$butterfly==0),"plot_id"]
+
+df[which(df$plot_id %in% butterflyZero),"butterflyTDq0"] = 0
+df[which(df$plot_id %in% butterflyZero),"butterflyPDq0"] = 0
+df[which(df$plot_id %in% butterflyZero),"butterflyFDq0"] = 0
+
+dfIns = df
+```
+
+
+```{r}
+dfIns %<>% mutate(survey_period = as.numeric(survey_period),
+                  year = as.numeric(year),
+                  beeTDq0 = as.numeric(beeTDq0),
+                  beePDq0 = as.numeric(beePDq0),
+                  beeFDq0 = as.numeric(beeFDq0),
+                  butterflyTDq0 = as.numeric( butterflyTDq0),
+                  butterflyPDq0 = as.numeric( butterflyPDq0),
+                  butterflyFDq0 = as.numeric( butterflyFDq0),
+                  planthopperTDq0 = as.numeric(planthopperTDq0),
+                  planthopperPDq0 = as.numeric(planthopperPDq0),
+                  planthopperFDq0 = as.numeric(planthopperFDq0),
+                  )
+```
+
+
+
+```{r}
+dfVeg = veg %>% dplyr::rename(nPlantSpecies = nSpecies)
+
+dfInPl = merge(dfIns,dfVeg,
+               by=c("site_id","year","survey_period","grazing_time"),all.x = T)
+data = merge(dfInPl,sitesTime,
+              by.y=c("site_id","grazing_time"),all.x = T)
+
+data$site_id <- factor(data$site_id)
+data$grazing_time <- factor(data$grazing_time, levels = c("control", "early", "late"))
+data$survey_period = as.factor(data$survey_period)
+data$year = as.factor(data$year)
+
+data$nInflorescenceCooccScaled = as.numeric(scale(data$nInflorescenceCooc))
+data$nPlantSpeciesScaled = as.numeric(scale(data$nPlantSpecies))
+data$coverHerbsScaled    = as.numeric(scale(data$coverHerbs))
+data$heightScaled        = as.numeric(scale(data$height))
+data$elevationScaled     = as.numeric(scale(data$elevation))
+
+# rename columns to avoid underscore
+data %<>%  dplyr::rename(siteID = site_id,
+                surveyPeriod = survey_period,
+                grazingTime = grazing_time)
+model_data = data
+```
+
+
+```{r}
+dfVeg = veg %>% dplyr::rename(nPlantSpecies = nSpecies)
+
+dfInPl = merge(dfIns,dfVeg,
+               by=c("site_id","year","survey_period","grazing_time"),all.x = T)
+data = merge(dfInPl,sitesTime,
+              by.y=c("site_id","grazing_time"),all.x = T)
+```
+
+
+
+
+
+```{r}
+data %>%dplyr::summarise(meanSR=mean(nPlantSpecies),sdSR=sd(nPlantSpecies),
+                         meanFlower = mean(nInflorescenceCoocc), 
+                         sdFlower = sd(nInflorescenceCoocc))
+```
+
+
+## Venn diagram butterfly
+```{r}
+dat = butterfly.abund
+
+control <- as.vector(unlist(unique(dat[dat$grazing_time=="control","species"])))
+early   <- as.vector(unlist(unique(dat[dat$grazing_time=="early","species"])))
+late    <- as.vector(unlist(unique(dat[dat$grazing_time=="late","species"])))
+x = list(control=control, early=early, late=late) 
+
+
+
+ggvenn::ggvenn(
+  x, 
+  fill_color = c("#868686FF", "#EFC000FF","#0073C2FF"),
+  stroke_size = 0.5, set_name_size = 3
+  )
+
+earlyLate = intersect(early,late)
+sort(setdiff(control,earlyLate))
+```
+
+
+
+## Venn diagram wild bees
+```{r}
+dat = bee.abund %>% dplyr::filter(survey_period==2)
+
+control <- as.vector(unlist(unique(dat[dat$grazing_time=="control","species"])))
+early   <- as.vector(unlist(unique(dat[dat$grazing_time=="early","species"])))
+late    <- as.vector(unlist(unique(dat[dat$grazing_time=="late","species"])))
+x = list(control=control, early=early, late=late) 
+
+
+
+ggvenn::ggvenn(
+  x, 
+  fill_color = c("#868686FF", "#EFC000FF","#0073C2FF"),
+  stroke_size = 0.5, set_name_size = 3
+  )
+
+earlyLate = intersect(early,late)
+sort(setdiff(control,earlyLate))
+```
+
+
+# Descriptive analyses
+```{r}
+by_period <- model_data %>% select(surveyPeriod, 
+                                   beeTDq0,beePDq0,beeFDq0,
+                                   butterflyTDq0,butterflyPDq0,butterflyFDq0,
+                                   planthopperTDq0,planthopperPDq0, planthopperFDq0,
+                                   nPlantSpecies,nInflorescenceCoocc, height) %>%
+                                   group_by(surveyPeriod) %>% 
+  summarise_all(list(sum = ~ sum(., na.rm = TRUE)))
+
+
+by_period %>% dplyr::summarise(across(-surveyPeriod, ~ 100*(1-(first(.x)/last(.x))))) %>% t 
+```
+
+
+
+
+# Plots
+
+## Correlation plots
+```{r}
+dfTEMP = model_data %>% dplyr::select(
+  beeTDq0,beePDq0,beeFDq0,
+  butterflyTDq0,butterflyPDq0,butterflyFDq0,
+  planthopperTDq0,planthopperPDq0,planthopperFDq0,
+  nPlantSpecies,coverGrass, coverHerbs,
+  nInflorescenceCoocc,height,elevation)
+
+dfCor = round(cor(dfTEMP,use="pairwise.complete.obs"),1)
+p.mat <- ggcorrplot::cor_pmat(dfTEMP)
+ggcorrplot::ggcorrplot(dfCor,type = "upper",
+                       lab=TRUE)
+
+```
+
+```{r}
+dfTEMP = model_data %>%
+  dplyr::filter(surveyPeriod==1) %>%
+  dplyr::select(
+  beeTDq0,beePDq0,beeFDq0,
+  butterflyTDq0,butterflyPDq0,butterflyFDq0,
+  planthopperTDq0,planthopperPDq0,planthopperFDq0,
+  nPlantSpecies,coverGrass, coverHerbs,
+  nInflorescenceCoocc,height,elevation)
+
+dfCor = round(cor(dfTEMP,use="pairwise.complete.obs"),1)
+p.mat <- ggcorrplot::cor_pmat(dfTEMP)
+ggcorrplot::ggcorrplot(dfCor,type = "upper",
+                       lab=TRUE)
+```
+
+
+## Insect plot
+```{r}
+beeDiversity$group = "bee"
+butterflyDiversity$group = "butterfly"
+planthopperDiversity$group = "planthopper"
+
+df= bind_rows(beeDiversity,butterflyDiversity,planthopperDiversity)
+
+df$diversityType <- factor(df$diversityType, levels = c("TD", "PD", "FD"))
+```
+
+### Boxplots - Overall
+```{r}
+groupLabel = c(
+expression(paste("Wild ","bees")),
+"Butterflies","Planthoppers"
+)
+
+dfPlot <- df %>% mutate(groupLabel= factor(group,  labels = groupLabel))
+
+# mean values
+df_means <- df %>% dplyr::group_by(group,diversityType,grazingTime) %>% dplyr::summarise(estimate=mean(estimate),.groups = 'keep')
+
+xlabs <- paste(levels(dfPlot$diversityType),"\n(N=",table(dfPlot$diversityType),")",sep="")
+
+# number of observations
+dfPlot %>% group_by(group,diversityType,grazingTime)%>%dplyr::summarize(n())
+dfPlot$Label = as.character(dfPlot$diversityType)
+
+dfPlot$Label[which(dfPlot$diversityType=="TD" &  dfPlot$group %in% c("bee","butterfly"))] = "TD\n(N=26|20|22)"
+dfPlot$Label[which(dfPlot$diversityType=="PD" &  dfPlot$group %in% c("bee","butterfly"))] = "PD\n(N=26|20|22)"
+dfPlot$Label[which(dfPlot$diversityType=="FD" &  dfPlot$group %in% c("bee","butterfly"))] = "FD\n(N=26|20|22)"
+
+
+
+## control
+dfPlot$Label[which(dfPlot$diversityType=="TD" & dfPlot$group =="planthopper")] = "TD\n(N=16)"
+dfPlot$Label[which(dfPlot$diversityType=="PD" & dfPlot$group =="planthopper")] = "PD\n(N=16)"
+dfPlot$Label[which(dfPlot$diversityType=="FD" & dfPlot$group =="planthopper")]= "FD\n(N=16)"
+
+
+dfPlot$Label <- factor(dfPlot$Label, levels = c("TD\n(N=26|20|22)","PD\n(N=26|20|22)", "FD\n(N=26|20|22)","TD\n(N=16)","PD\n(N=16)" ,"FD\n(N=16)"))
+
+
+plotInsects=dfPlot %>%
+ggplot(aes(y = estimate, x = Label,fill=grazingTime))+
+  geom_boxplot(position=position_dodge(0.9))+
+   #facet_grid(.~group, labeller=label_both, scales="free") +
+   ggh4x::facet_grid2(.~groupLabel,
+                      scales = "free_x",
+           labeller = label_parsed)+
+  theme_bw()+theme_clean()+
+  scale_y_continuous("")+
+  scale_x_discrete("")+
+  scale_fill_manual(name = "Treatments: ",
+                      values = rev(ggsci::pal_jco("default")(3))) + 
+  theme(strip.text.y.left = element_text(angle = 0),
+        legend.position="bottom",
+         legend.margin=margin(c(-20,5,5,5)))+
+  geom_point(stat = 'summary', fun = 'mean',col="red",
+             position=position_dodge(width = 0.9));plotInsects
+```
+
+### Boxplots - Sampling period
+```{r}
+groupLabel = c(
+expression(paste("Wild ","bees")),
+"Butterflies","Planthoppers"
+)
+
+dfPlot <- df %>% mutate(groupLabel= factor(group,  labels = groupLabel))
+
+# mean values
+df_means <- df %>% dplyr::group_by(survey_period,group,diversityType,grazingTime) %>% dplyr::summarise(estimate=mean(estimate),.groups = 'keep')
+
+xlabs <- paste(levels(dfPlot$diversityType),"\n(N=",table(dfPlot$diversityType),")",sep="")
+
+# number of observations
+dfPlot %>% group_by(survey_period,group,diversityType,grazingTime)%>%dplyr::summarize(n())
+dfPlot$Label = as.character(dfPlot$diversityType)
+
+
+plotInsects=dfPlot %>%
+ggplot(aes(y = estimate, x = diversityType,fill=grazingTime))+
+  geom_boxplot(position=position_dodge(0.9))+
+   ggh4x::facet_grid2(survey_period~groupLabel,
+                      scales = "free_x",
+           labeller = label_parsed)+
+  theme_bw()+theme_clean()+
+  scale_y_continuous("")+
+  scale_x_discrete("")+
+  scale_fill_manual(name = "Treatments: ",
+                  values = rev(ggsci::pal_jco("default")(3))) + 
+  theme(strip.text.y.left = element_text(angle = 0),
+        legend.position="bottom",
+         legend.margin=margin(c(-20,5,5,5)))+
+  geom_point(stat = 'summary', fun = 'mean',col="red",
+             position=position_dodge(width = 0.9));plotInsects
+```
+
+
+
+## Vegetation plot
+```{r}
+tmp = veg %>% dplyr::select(-treatment)
+# %>%
+#   dplyr::mutate(nInflorescenceCoocc=nInflorescenceCoocc/100)
+dfVeg <- reshape::melt(tmp, id=c("site_id","year","survey_period","grazing_time"))
+dfVeg = na.omit(dfVeg)
+
+groupLabel = c(
+expression(paste(atop('Species', 'richness'))),
+expression(paste(atop('Cover of','herbs (%)'))),
+expression(paste(atop('Cover of', 'grasses (%)'))),
+expression(paste(atop('Number of', 'infloresences'))),
+expression(paste(atop('Sward','height (cm)'))))
+
+dfPlot <- dfVeg %>% 
+  mutate(groupLabel     = factor(variable,  labels = groupLabel))
+```
+
+### Number of observations
+```{r}
+# number of observations
+dfPlot %>% group_by(variable,grazing_time)%>%dplyr::summarize(n())
+
+
+dfPlot$Label = as.character(dfPlot$variable)
+
+names= unique(dfPlot$variable)[-5] # height different
+dfPlot$Label[which(dfPlot$grazing_time=="control" &  dfPlot$variable %in% names)] = "control\n(N=30)"
+dfPlot$Label[which(dfPlot$grazing_time=="early"   &  dfPlot$variable %in% names)] = "early\n(N=30)"
+dfPlot$Label[which(dfPlot$grazing_time=="late"    &  dfPlot$variable %in% names)] = "late\n(N=30)"
+
+
+dfPlot$Label[which(dfPlot$grazing_time=="control" &  dfPlot$variable =="height")] = "control\n(N=16)"
+dfPlot$Label[which(dfPlot$grazing_time=="early"   &  dfPlot$variable =="height")] = "early\n(N=16)"
+dfPlot$Label[which(dfPlot$grazing_time=="late"    &  dfPlot$variable =="height")] = "late\n(N=16)"
+```
+
+
+### Create plot 1
+```{r}
+dfPlot1 =  dfPlot %>% dplyr::filter(variable == "height")
+
+
+plotVeg1=dfPlot1 %>%
+ggplot(aes(y = value, x = Label,fill=grazing_time))+
+  geom_boxplot(position=position_dodge(0.9))+
+   ggh4x::facet_grid2(.~groupLabel,
+                      scales = "free_x",
+                      labeller = label_parsed)+
+    scale_y_continuous(limits = c(0, 170))+
+  scale_x_discrete("")+
+  scale_fill_manual(name = "Treatments: ",
+                      values = rev(ggsci::pal_jco("default")(3)))+
+  theme_bw()+theme_clean()+
+  theme(strip.text.y.left = element_text(angle = 0),
+        strip.text = element_text(size = 12),
+        axis.text = element_text(size =12),
+        legend.position="bottom")+
+  geom_point(stat = 'summary', fun = 'mean',col="red");plotVeg1
+```
+
+### Create plot 2
+```{r}
+dfPlot2 =  dfPlot %>% dplyr::filter(variable %in% c("nInflorescenceCoocc"))
+
+
+plotVeg2=dfPlot2 %>%
+ggplot(aes(y = value, x = Label,fill=grazing_time))+
+  geom_boxplot(position=position_dodge(0.9))+
+   ggh4x::facet_grid2(.~groupLabel,
+                      scales = "free_x",
+                      labeller = label_parsed)+
+    scale_y_continuous(limits = c(0, 2000))+
+  scale_x_discrete("")+
+  scale_fill_manual(name = "Treatments: ",
+                      values = rev(ggsci::pal_jco("default")(3)))+
+  theme_bw()+theme_clean()+
+  theme(strip.text.y.left = element_text(angle = 0),
+        strip.text = element_text(size = 12),
+        axis.text = element_text(size =12),
+        legend.position="bottom")+
+  geom_point(stat = 'summary', fun = 'mean',col="red");plotVeg2
+```
+
+### Combine plots
+```{r}
+ggpubr::ggarrange(plotVeg1,ggplot() + theme_void(), plotVeg2, ncol=3, nrow=1, common.legend = TRUE, legend="bottom",widths = c(1,0.01,0.5))
+```
+
+
+### Test for differences
+#### Inflorescences in mid/late summer
+```{r}
+dfPlot2 =  dfPlot %>% 
+  dplyr::filter(variable %in% c("nInflorescenceCoocc")) %>%
+  dplyr::filter(survey_period==2)
+
+
+plotVeg2=dfPlot2 %>%
+ggplot(aes(y = value, x = Label,fill=grazing_time))+
+  geom_boxplot(position=position_dodge(0.9))+
+   ggh4x::facet_grid2(.~groupLabel,
+                      scales = "free_x",
+                      labeller = label_parsed)+
+    scale_y_continuous("")+
+  scale_x_discrete("")+
+  scale_fill_manual(name = "Treatments: ",
+                      values = rev(ggsci::pal_jco("default")(3)))+
+  theme_bw()+theme_clean()+
+  theme(strip.text.y.left = element_text(angle = 0),
+        strip.text = element_text(size = 12),
+        axis.text = element_text(size =12),
+        legend.position="bottom")+
+  geom_point(stat = 'summary', fun = 'mean',col="red");plotVeg2
+```
+
+```{r}
+dfPlot2 %>%
+  dplyr::filter(variable=="nInflorescenceCoocc") %>%
+  dplyr::select(grazing_time,variable,value) %>%
+  dplyr::group_by(grazing_time) %>%
+  dplyr::summarise(meanInflorescences = mean(value),
+                   sdInflorescences = sd(value))
+```
+
+ A tibble: 3 × 3
+  grazing_time meanInflorescences sdInflorescences
+  <chr>                     <dbl>            <dbl>
+1 control                    730.             497.
+2 early                      481.             260.
+3 late                       374.             363.
+
+
+#### Anova - Difference for turnout without considering survey period
+```{r}
+df_aov <- dfPlot %>%
+  dplyr::group_by(variable) %>%
+  tidyr::nest() %>%
+  dplyr::mutate(.data = .,
+                aov_results = data %>% purrr::map(.x = ., .f = ~ summary(aov(value ~ grazing_time, data = .))))
+
+
+lapply(seq_along(df_aov$aov_results), function(i) df_aov$aov_results[[i]])
+
+# inflorescences and height
+
+df_aov_PostHoc <- dfPlot %>%
+  dplyr::filter(variable %in% c("nInflorescenceCoocc","height"))%>%
+  dplyr::group_by(variable) %>%
+  tidyr::nest() %>%
+  dplyr::mutate(.data = .,
+                aov_results = data %>% purrr::map(.x = ., .f = ~ TukeyHSD(aov(value ~ grazing_time, data = .))))
+
+
+lapply(seq_along(df_aov_PostHoc$aov_results), function(i) df_aov_PostHoc$aov_results[[i]])
+```
+
+- nInflorescenceCoocc, 2 period
+
+[[1]]
+  Tukey multiple comparisons of means
+    95% family-wise confidence level
+
+Fit: aov(formula = value ~ grazing_time, data = .)
+
+$grazing_time
+                   diff       lwr       upr     p adj
+early-control -201.1667 -424.6852  22.35184 0.0865962
+late-control  -304.7667 -528.2852 -81.24816 0.0046158
+late-early    -103.6000 -327.1185 119.91851 0.5134668
+
+- sward height, 2 period
+
+[[2]]
+  Tukey multiple comparisons of means
+    95% family-wise confidence level
+
+Fit: aov(formula = value ~ grazing_time, data = .)
+
+$grazing_time
+                    diff       lwr       upr     p adj
+early-control -15.234126 -36.08621  5.617954 0.1910101
+late-control  -23.985234 -44.83731 -3.133155 0.0207575
+late-early     -8.751109 -29.60319 12.100971 0.5700398
+
+
+
+
+#### Anova - Difference for turnout for different survey periods
+```{r}
+df_aov <- dfPlot %>%
+  dplyr::group_by(variable,survey_period) %>%
+  tidyr::nest() %>%
+  dplyr::mutate(.data = .,
+                aov_results = data %>% purrr::map(.x = ., .f = ~ summary(aov(value ~ grazing_time, data = .))))
+
+
+lapply(seq_along(df_aov$aov_results), function(i) df_aov$aov_results[[i]])
+
+# inflorescences and height
+
+df_aov_PostHoc <- dfPlot %>%
+  dplyr::filter(variable %in% c("nInflorescenceCoocc","height"), survey_period==2)%>%
+  dplyr::group_by(variable) %>%
+  tidyr::nest() %>%
+  dplyr::mutate(.data = .,
+                aov_results = data %>% purrr::map(.x = ., .f = ~ TukeyHSD(aov(value ~ grazing_time, data = .))))
+
+
+lapply(seq_along(df_aov_PostHoc$aov_results), function(i) df_aov_PostHoc$aov_results[[i]])
+```
+[[1]]
+  Tukey multiple comparisons of means
+    95% family-wise confidence level
+
+Fit: aov(formula = value ~ grazing_time, data = .)
+
+$grazing_time
+                   diff       lwr       upr     p adj
+early-control -249.0667 -591.2558  93.12250 0.1926069
+late-control  -356.0000 -698.1892 -13.81083 0.0398621
+late-early    -106.9333 -449.1225 235.25583 0.7297773
+
+
+[[2]]
+  Tukey multiple comparisons of means
+    95% family-wise confidence level
+
+Fit: aov(formula = value ~ grazing_time, data = .)
+
+$grazing_time
+                   diff       lwr        upr     p adj
+early-control -24.62497 -49.90068  0.6507445 0.0570774
+late-control  -26.75678 -52.03249 -1.4810658 0.0367680
+late-early     -2.13181 -27.40752 23.1439021 0.9754220
+
+
+
+
+
+
+
+## Vegetation plot - 2 Survey periods
+```{r}
+tmp = veg %>% dplyr::select(-treatment,-nSpecies,
+                            -coverGrass,-coverHerbs)%>%
+  dplyr::mutate(nInflorescenceCoocc=nInflorescenceCoocc/10)
+dfVeg <- reshape::melt(tmp, id=c("site_id","year","survey_period","grazing_time"))
+dfVeg = na.omit(dfVeg)
+
+groupLabel = c(
+expression(paste(atop('Number of', 'infloresences'))),
+expression(paste(atop('Sward','height (cm)'))))
+
+dfPlot <- dfVeg %>% 
+  mutate(groupLabel     = factor(variable,  labels = groupLabel))
+```
+
+### Number of observations
+```{r}
+# number of observations
+dfPlot %>% group_by(variable,grazing_time,survey_period)
+
+dfPlot$Label = as.character(dfPlot$variable)
+
+names= unique(dfPlot$variable)[-5] # height different
+dfPlot$Label[which(dfPlot$grazing_time=="control" & dfPlot$variable %in% names& dfPlot$survey_period==1)] = "control\n(N=15)"
+dfPlot$Label[which(dfPlot$grazing_time=="control" & dfPlot$variable %in% names& dfPlot$survey_period==2)] = "control\n(N=15)"
+dfPlot$Label[which(dfPlot$grazing_time=="early"   & dfPlot$variable %in% names& dfPlot$survey_period==1)] = "early\n(N=15)"
+dfPlot$Label[which(dfPlot$grazing_time=="early"   & dfPlot$variable %in% names& dfPlot$survey_period==2)] = "early\n(N=15)"
+dfPlot$Label[which(dfPlot$grazing_time=="late"    & dfPlot$variable %in% names& dfPlot$survey_period==1)] = "late\n(N=15)"
+dfPlot$Label[which(dfPlot$grazing_time=="late"    & dfPlot$variable %in% names& dfPlot$survey_period==2)] = "late\n(N=15)"
+
+dfPlot$Label[which(dfPlot$grazing_time=="control" &  dfPlot$variable =="height"& dfPlot$survey_period==1)] = "control\n(N=8)"
+dfPlot$Label[which(dfPlot$grazing_time=="control" &  dfPlot$variable =="height"& dfPlot$survey_period==2)] = "control\n(N=8)"
+dfPlot$Label[which(dfPlot$grazing_time=="early"   &  dfPlot$variable =="height"& dfPlot$survey_period==1)] = "early\n(N=8)"
+dfPlot$Label[which(dfPlot$grazing_time=="early"   &  dfPlot$variable =="height"& dfPlot$survey_period==2)] = "early\n(N=8)"
+dfPlot$Label[which(dfPlot$grazing_time=="late"    &  dfPlot$variable =="height"& dfPlot$survey_period==1)] = "late\n(N=8)"
+dfPlot$Label[which(dfPlot$grazing_time=="late"    &  dfPlot$variable =="height"& dfPlot$survey_period==2)] = "late\n(N=8)"
+```
+
+### Create plot
+```{r}
+groupLabel2 <- c(expression('early~summer'),
+                                  expression('mid/late~summer'))
+
+dfPlot <- dfPlot %>% 
+  mutate(survey_period     = factor(survey_period,  labels = groupLabel2))
+
+
+
+
+plotVeg=dfPlot %>% 
+ggplot(aes(y = value, x = Label,fill=grazing_time))+
+  geom_boxplot(position=position_dodge(0.9))+
+   facet_grid(survey_period~groupLabel,
+   #ggh4x::facet_grid2(survey_period~groupLabel,
+                      scales = "free",
+                      labeller = label_parsed)+
+  scale_y_continuous(limits = c(0, 170))+
+  ylab("")+
+  scale_x_discrete("")+
+  scale_fill_manual(name = "Treatments: ",
+                      values = rev(ggsci::pal_jco("default")(3)))+
+  theme_bw()+
+  #theme_clean()+
+  theme(strip.text.y.left = element_text(angle = 0),
+        strip.text = element_text(size = 12),
+        axis.text = element_text(size =12),
+        legend.position="bottom")+
+  geom_point(stat = 'summary', fun = 'mean',col="red");plotVeg
+```

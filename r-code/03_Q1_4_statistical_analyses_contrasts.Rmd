@@ -1,0 +1,388 @@
+---
+title: "Calculation of contrasts"
+author: "Bernd Panassiti"
+date: 'created: 07.06.2023, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+opts_chunk$set(fig.align='center',                # aligns all figures
+                echo=TRUE,                        # shows r-code
+                message=FALSE,                    # suppresses library outputs
+                warnings=FALSE,                   # suppresses library outputs
+                tidy=TRUE,  # prevents the source code from running off a pdf page
+                dev='pdf')                        # pdf device
+```
+
+
+
+
+# Introduction
+
+This script provides the R-code for the statistical analyses to evaluate the influence of grazing time on insect diversity in alpine pastures.
+
+2 hypotheses are investigated:
+
+1) Influence of grazing time (early, late) on insect diversity depending on survey period and year
+2)
+
+
+Reponse data: taxonomic, phylogenetic and functional alpha diversity of Apiformes, Papilionoidea, Auchenorrhyncha
+
+Using iNEXT3d estimates, I assume that respones follows a Gaussian distribution
+
+
+With random effect
+
+(1 | A/B) translates to (1 | A) + (1 | A:B) where A:B simply means creating a new grouping factor with the levels of A and B pasted together:
+If the user were to write (1 | g1/g2), brms will expand this to (1 | g1) + (1 | g1:g2)
+https://journal.r-project.org/archive/2018/RJ-2018-017/index.html
+
+lmer:
+https://www.phonetik.uni-muenchen.de/~jmh/lehre/sem/ss18/statistikR_files/MixedModels.html
+
+https://ourcodingclub.github.io/tutorials/mixed-models/
+
+for model formulation of interaction of two factor variables see:
+https://stackoverflow.com/questions/40729701/how-to-use-formula-in-r-to-exclude-main-effect-but-retain-interaction
+
+
+
+
+# Loading of packages and data
+```{r loading_data, include=FALSE}
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load(tidyverse,magrittr,caret,ggplot2,DHARMa,broom.mixed,
+       posterior,ggdist,tidybayes,pryr,bayesplot,ggpubr,grid,gridExtra,
+       emmeans,broom, broom.mixed,
+       posterior,brms,bayesplot,ggpubr,
+       hrbrthemes,patchwork,# additional themes
+       GGally) # ggpairs
+
+source("r-code/00_functions.R")
+
+load("results/modelResults.RData")
+```
+
+
+
+# Contrasts
+
+## Examples with emmeans
+### Management predictors
+```{r}
+emm2=emmeans::emmeans(modelResultsTDManagement[[1]], ~grazingTime * surveyPeriod)
+contrast(emm2,"pairwise",by="surveyPeriod",type="response")
+```
+surveyPeriod = 1:
+ contrast        estimate lower.HPD upper.HPD
+ control - early    0.963    -0.571     2.529
+ control - late     0.327    -1.220     1.890
+ early - late      -0.635    -2.130     1.005
+
+surveyPeriod = 2:
+ contrast        estimate lower.HPD upper.HPD
+ control - early   -0.687    -2.203     0.812
+ control - late     0.486    -0.973     2.045
+ early - late       1.180    -0.335     2.706
+
+Results are averaged over the levels of: year 
+Point estimate displayed: median 
+HPD interval probability: 0.95 
+
+```{r}
+EMM = emmeans::emmeans(modelResultsTDManagement[[1]], ~grazingTime*surveyPeriod)
+emmeans::joint_tests(EMM)
+
+
+summary(pairs(EMM),by = NULL, adjust = "mvt")
+
+modelResultsTDManagement[[1]] %>%
+  emmeans( ~ grazingTime| surveyPeriod) %>%
+  gather_emmeans_draws() %>%
+  ggplot(aes(x = grazingTime, y = .value)) +
+  geom_line(aes(group = .draw), alpha = .005) +
+  stat_pointinterval() +
+  facet_grid(~  surveyPeriod) +
+  theme_light()
+```
+
+
+### Grazing vs. Control and Early vs. Late
+Define contrasts
+```{r}
+Contrasts = list(control.vs.grazing = c(-1,1/2,1/2), # same as = c(2,-1,-1)/2
+                 early.vs.late = c(0,1,-1))
+```
+
+
+```{r}
+emm <- emmeans(modelResultsTDManagement[[1]], ~ grazingTime * surveyPeriod)
+contrast(emm, Contrasts, by = "surveyPeriod")
+```
+
+surveyPeriod = 1:
+ contrast           estimate lower.HPD upper.HPD
+ control.vs.grazing  -0.6406    -1.971     0.716
+ early.vs.late       -0.6351    -2.130     1.005
+
+surveyPeriod = 2:
+ contrast           estimate lower.HPD upper.HPD
+ control.vs.grazing   0.0991    -1.219     1.405
+ early.vs.late        1.1796    -0.335     2.706
+
+Results are averaged over the levels of: year 
+Point estimate displayed: median 
+HPD interval probability: 0.95
+
+## BRM:Hypothesis
+
+https://mspeekenbrink.github.io/sdam-r-companion/bayesian-hypothesis-testing-with-bayes-factors.html
+https://mvuorre.github.io/posts/2020-02-06-how-to-calculate-contrasts-from-a-fitted-brms-model/
+https://groups.google.com/g/brms-users/c/oFUWA3hl6rc/m/8LJFQaHhBwAJ
+https://mspeekenbrink.github.io/sdam-r-companion/bayesian-hypothesis-testing-with-bayes-factors.html
+
+Q1) Early SP1 > Late SP1
+Q2) Early SP2 > Late SP2
+Q3) Early+Late SP1 < Control SP1
+Q4) Early+Late SP2 < Control SP2
+
+evidence ratio: p/(1-p); P = posterior probability
+
+emmeans uses HPDs by default while brms uses (quantile-based) credible intervals
+
+```{r}
+Q1 = c("surveyPeriod1:grazingTimeearly > 0")
+Q2 = c("surveyPeriod2:grazingTimeearly > 0")
+Q3 = c("surveyPeriod1:grazingTimelate > 0")
+Q4 = c("surveyPeriod2:grazingTimelate > 0")
+Q5 = c("surveyPeriod1:grazingTimeearly < 0")
+Q6 = c("surveyPeriod2:grazingTimeearly < 0")
+Q7 = c("surveyPeriod1:grazingTimelate < 0")
+Q8 = c("surveyPeriod2:grazingTimelate < 0")
+
+Q9  = c("surveyPeriod1:grazingTimeearly > surveyPeriod1:grazingTimelate")
+Q10 = c("surveyPeriod2:grazingTimeearly > surveyPeriod2:grazingTimelate")
+Q11 = c("surveyPeriod1:grazingTimeearly < surveyPeriod1:grazingTimelate")
+Q12 = c("surveyPeriod2:grazingTimeearly < surveyPeriod2:grazingTimelate")
+
+
+Q13 = c("((surveyPeriod1:grazingTimeearly*0.5)+(surveyPeriod1:grazingTimelate*0.5)) > 0")
+Q14 = c("((surveyPeriod2:grazingTimeearly*0.5)+(surveyPeriod2:grazingTimelate*0.5)) > 0")
+Q15 = c("((surveyPeriod1:grazingTimeearly*0.5)+(surveyPeriod1:grazingTimelate*0.5)) < 0")
+Q16 = c("((surveyPeriod2:grazingTimeearly*0.5)+(surveyPeriod2:grazingTimelate*0.5)) < 0")
+
+Q17 = c("surveyPeriod1:nPlantSpecies > 0")
+Q18 = c("surveyPeriod2:nPlantSpecies > 0")
+Q19 = c("surveyPeriod1:nInflorescenceCoocc > 0")
+Q20 = c("surveyPeriod2:nInflorescenceCoocc > 0")
+Q21 = c("surveyPeriod1:coverHerbs > 0")
+Q22 = c("surveyPeriod2:coverHerbs > 0")
+Q23 = c("surveyPeriod1:nPlantSpecies < 0")
+Q24 = c("surveyPeriod2:nPlantSpecies < 0")
+Q25 = c("surveyPeriod1:nInflorescenceCoocc < 0")
+Q26 = c("surveyPeriod2:nInflorescenceCoocc < 0")
+Q27 = c("surveyPeriod1:coverHerbs < 0")
+Q28 = c("surveyPeriod2:coverHerbs < 0")
+
+Q29 = c("surveyPeriod1:height > 0")
+Q30 = c("surveyPeriod2:height > 0")
+Q31 = c("surveyPeriod1:biomass > 0")
+Q32 = c("surveyPeriod2:biomass > 0")
+Q33 = c("surveyPeriod1:height < 0")
+Q34 = c("surveyPeriod2:height < 0")
+Q35 = c("surveyPeriod1:biomass < 0")
+Q36 = c("surveyPeriod2:biomass < 0")
+
+
+# response: insects, predictors: grazing
+hypTDbee         = hypothesis(modelResultsTDManagement[[1]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16))
+hypTDbutterfly   = hypothesis(modelResultsTDManagement[[2]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+hypTDplanthopper = hypothesis(modelResultsTDManagement[[3]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+
+hypPDbee         = hypothesis(modelResultsPDManagement[[1]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+hypPDbutterfly   = hypothesis(modelResultsPDManagement[[2]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+hypPDplanthopper = hypothesis(modelResultsPDManagement[[3]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+
+hypFDbee         = hypothesis(modelResultsFDManagement[[1]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+hypFDbutterfly   = hypothesis(modelResultsFDManagement[[2]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+hypFDplanthopper = hypothesis(modelResultsFDManagement[[3]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+
+# response: plants, predictors: grazing
+hypVegSR         = hypothesis(modelResultsVegManagement[[1]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+hypVegFlower     = hypothesis(modelResultsVegManagement[[2]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+hypVegHeight     = hypothesis(modelResultsVegManagement[[3]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+hypVegBiomass     = hypothesis(modelResultsVegManagement[[4]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,Q11,Q12,Q13,Q14,Q15,Q16)) 
+
+
+# response: insects, predictors: Vegetation 
+hypTDbeeVeg         = hypothesis(modelResultsTDVegetation[[1]], c(Q17,Q18,Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,Q27,Q28))
+hypTDbutterflyVeg   = hypothesis(modelResultsTDVegetation[[2]], c(Q17,Q18,Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,Q27,Q28)) 
+hypTDplanthopperVeg = hypothesis(modelResultsTDVegetation[[3]], c(Q21,Q22,Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,Q35,Q36)) # height, biomass herbs
+
+
+hypPDbeeVeg         = hypothesis(modelResultsPDVegetation[[1]], c(Q17,Q18,Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,Q27,Q28)) 
+hypPDbutterflyVeg   = hypothesis(modelResultsPDVegetation[[2]], c(Q17,Q18,Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,Q27,Q28)) 
+hypPDplanthopperVeg = hypothesis(modelResultsPDVegetation[[3]], c(Q21,Q22,Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,Q35,Q36)) 
+
+hypFDbeeVeg         = hypothesis(modelResultsFDVegetation[[1]], c(Q17,Q18,Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,Q27,Q28)) 
+hypFDbutterflyVeg   = hypothesis(modelResultsFDVegetation[[2]], c(Q17,Q18,Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,Q27,Q28)) 
+hypFDplanthopperVeg = hypothesis(modelResultsFDVegetation[[3]], c(Q21,Q22,Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,Q35,Q36)) 
+```
+
+```{r}
+hypTDbee$hypothesis$diversity =rep("TD",16)
+hypTDbee$hypothesis$group =rep("bee",16)
+hypTDbutterfly$hypothesis$diversity =rep("TD",16)
+hypTDbutterfly$hypothesis$group =rep("butterfly",16)
+hypTDplanthopper$hypothesis$diversity =rep("TD",16)
+hypTDplanthopper$hypothesis$group =rep("planthopper",16)
+
+hypPDbee$hypothesis$diversity =rep("PD",16)
+hypPDbee$hypothesis$group =rep("bee",16)
+hypPDbutterfly$hypothesis$diversity =rep("PD",16)
+hypPDbutterfly$hypothesis$group =rep("butterfly",16)
+hypPDplanthopper$hypothesis$diversity =rep("PD",16)
+hypPDplanthopper$hypothesis$group =rep("planthopper",16)
+
+hypFDbee$hypothesis$diversity =rep("FD",16)
+hypFDbee$hypothesis$group =rep("bee",16)
+hypFDbutterfly$hypothesis$diversity =rep("FD",16)
+hypFDbutterfly$hypothesis$group =rep("butterfly",16)
+hypFDplanthopper$hypothesis$diversity =rep("FD",16)
+hypFDplanthopper$hypothesis$group =rep("planthopper",16)
+
+hypVegSR$hypothesis$group =rep("SR",16)
+hypVegFlower$hypothesis$group =rep("Flower",16)
+hypVegHeight$hypothesis$group =rep("Height",16)
+hypVegBiomass$hypothesis$group =rep("Biomass",16)
+
+hypVegSR$hypothesis$diversity =rep("Veg",16)
+hypVegFlower$hypothesis$diversity =rep("Veg",16)
+hypVegHeight$hypothesis$diversity =rep("Veg",16)
+hypVegBiomass$hypothesis$diversity =rep("Veg",16)
+
+hypTDbeeVeg$hypothesis$diversity =rep("TD",12)
+hypTDbeeVeg$hypothesis$group =rep("bee",12)
+hypTDbutterflyVeg$hypothesis$diversity =rep("TD",12)
+hypTDbutterflyVeg$hypothesis$group =rep("butterfly",12)
+hypTDplanthopperVeg$hypothesis$diversity =rep("TD",12)
+hypTDplanthopperVeg$hypothesis$group =rep("planthopper",12)
+
+
+hypPDbeeVeg$hypothesis$diversity =rep("PD",12)
+hypPDbeeVeg$hypothesis$group =rep("bee",12)
+hypPDbutterflyVeg$hypothesis$diversity =rep("PD",12)
+hypPDbutterflyVeg$hypothesis$group =rep("butterfly",12)
+hypPDplanthopperVeg$hypothesis$diversity =rep("PD",12)
+hypPDplanthopperVeg$hypothesis$group =rep("planthopper",12)
+
+hypFDbeeVeg$hypothesis$diversity =rep("FD",12)
+hypFDbeeVeg$hypothesis$group =rep("bee",12)
+hypFDbutterflyVeg$hypothesis$diversity =rep("FD",12)
+hypFDbutterflyVeg$hypothesis$group =rep("butterfly",12)
+hypFDplanthopperVeg$hypothesis$diversity =rep("FD",12)
+hypFDplanthopperVeg$hypothesis$group =rep("planthopper",12)
+
+
+
+
+hypothesesResults = rbind(
+hypTDbee$hypothesis,
+hypTDbutterfly$hypothesis,
+hypTDplanthopper$hypothesis,
+
+hypPDbee$hypothesis,
+hypPDbutterfly$hypothesis,
+hypPDplanthopper$hypothesis,
+
+hypFDbee$hypothesis,
+hypFDbutterfly$hypothesis,
+hypFDplanthopper$hypothesis,
+
+hypVegSR$hypothesis,
+hypVegFlower$hypothesis,
+hypVegHeight$hypothesis,
+hypVegBiomass$hypothesis,
+
+hypTDbeeVeg$hypothesis,
+hypTDbutterflyVeg$hypothesis,
+hypTDplanthopperVeg$hypothesis,
+
+hypPDbeeVeg$hypothesis,
+hypPDbutterflyVeg$hypothesis,
+hypPDplanthopperVeg$hypothesis,
+
+hypFDbeeVeg$hypothesis,
+hypFDbutterflyVeg$hypothesis,
+hypFDplanthopperVeg$hypothesis
+)
+
+hypothesesResults$Hypothesis_fullname = hypothesesResults$Hypothesis
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:grazingTimeearly) > 0")]  = "SP1: early > control"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:grazingTimelate) > 0")]  = "SP1: late > control"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:grazingTimeearly) > 0")]  = "SP2: early > control"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:grazingTimelate) > 0")]  = "SP2: late > control"
+
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:grazingTimeearly) < 0")]  = "SP1: early < control"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:grazingTimelate) < 0")]  = "SP1: late < control"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:grazingTimeearly) < 0")]  = "SP2: early < control"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:grazingTimelate) < 0")]  = "SP2: late < control"
+
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:grazingTimeearly)-(surveyPeriod1:grazingTimelate) > 0")] = "SP1: early > late"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:grazingTimeearly)-(surveyPeriod2:grazingTimelate) > 0")] = "SP2: early > late"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(((surveyPeriod1:grazingTimeearly*0.5)+(surveyPeriod1:grazingTimelate*0.5))) > 0")] = 
+  "SP1: grazing > control"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(((surveyPeriod2:grazingTimeearly*0.5)+(surveyPeriod2:grazingTimelate*0.5))) > 0")] = 
+  "SP2: grazing > control"
+
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:grazingTimeearly)-(surveyPeriod1:grazingTimelate) < 0")] = "SP1: early < late"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:grazingTimeearly)-(surveyPeriod2:grazingTimelate) < 0")] = "SP2: early < late"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(((surveyPeriod1:grazingTimeearly*0.5)+(surveyPeriod1:grazingTimelate*0.5))) < 0")] = 
+  "SP1: grazing < control"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(((surveyPeriod2:grazingTimeearly*0.5)+(surveyPeriod2:grazingTimelate*0.5))) < 0")] = 
+  "SP2: grazing < control"
+
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:nPlantSpecies) > 0")] = "SP1: SR plant > intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:nPlantSpecies) > 0")] = "SP2: SR plant > intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:nInflorescenceCoocc) > 0")]  = "SP1: Flower > intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:nInflorescenceCoocc) > 0")]  = "SP2: Flower > intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:coverHerbs) > 0")]  = "SP1: Cover herbs > intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:coverHerbs) > 0")]  = "SP2: Cover herbs > intercept"
+
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:nPlantSpecies) < 0")] = "SP1: SR plant < intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:nPlantSpecies) < 0")] = "SP2: SR plant < intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:nInflorescenceCoocc) < 0")]  = "SP1: Flower < intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:nInflorescenceCoocc) < 0")]  = "SP2: Flower < intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:coverHerbs) < 0")]  = "SP1: Cover herbs < intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:coverHerbs) < 0")]  = "SP2: Cover herbs < intercept"
+
+
+
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:biomass) > 0")] = "SP1: biomass > intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:biomass) > 0")] = "SP2: biomass > intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:height) > 0")] = "SP1: height > intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:height) > 0")] = "SP2: height > intercept"
+
+
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:biomass) < 0")] = "SP1: biomass < intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:biomass) < 0")] = "SP2: biomass < intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod1:height) < 0")] = "SP1: height < intercept"
+hypothesesResults$Hypothesis[which(hypothesesResults$Hypothesis_fullname=="(surveyPeriod2:height) < 0")] = "SP2: height < intercept"
+
+hypothesesResults = arrange.vars(hypothesesResults, c("group"=1,"diversity"=2))
+
+openxlsx::write.xlsx(hypothesesResults,paste("results/",gsub("-",".",Sys.Date()),"-Q1_Hypotheses.xlsx",sep=""),
+                     firstRow = TRUE)
+```
+

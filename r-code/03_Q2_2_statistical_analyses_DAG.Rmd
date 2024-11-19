@@ -1,0 +1,628 @@
+---
+title: "DAG plots based on SEM results"
+author: "Bernd Panassiti"
+date: 'created: 07.06.2023, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+opts_chunk$set(fig.align='center',                # aligns all figures
+                echo=TRUE,                        # shows r-code
+                message=FALSE,                    # suppresses library outputs
+                warnings=FALSE,                   # suppresses library outputs
+                tidy=TRUE,  # prevents the source code from running off a pdf page
+                dev='pdf')                        # pdf device
+```
+
+
+# Loading of packages and data
+```{r loading_data, include=FALSE}
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load(tidyverse,magrittr,caret,ggplot2,DHARMa,broom.mixed,
+       posterior,ggdist,tidybayes,pryr,bayesplot,ggpubr,grid,
+       gridExtra,ggdag,dagitty,
+       emmeans,broom, broom.mixed,
+       posterior,brms,bayesplot,ggpubr)
+
+source("r-code/00_functions.R")
+
+load("data/workingdata.RData")
+load("results/modelResultsSEM.RData")
+```
+
+
+
+# DAG
+
+Elevation is confounder
+PLant is mediator
+
+
+```{r}
+probX = c(0.58, 0.83,  1.09, 1.49, 1.40,1.75,0.95)
+probY = c(0.4, 0.4,rep(0.7,2),0.15,0.15,-0.22)
+```
+
+
+```{r}
+shorten_dag_arrows <- function(tidy_dag, shorten_distance){
+  # Update underlying ggdag object
+  tidy_dag$data = dplyr::mutate(tidy_dag$data, slope = (yend - y) / (xend - x), # Calculate slope of line
+                  distance = sqrt((xend-x)^2 + (yend - y)^2), # Calculate total distance of line
+                  proportion = shorten_distance/(distance), # Calculate proportion by which to be shortened
+                  xend = (1-proportion)*xend + (proportion*x), # Shorten xend
+                  yend = ((1-proportion)*yend + (proportion*y))+0.02) %>% # Shorten yend
+    dplyr::select(-slope, -distance, -proportion) # Drop intermediate values
+  return(tidy_dag)
+}
+```
+
+
+https://www.bnlearn.com/examples/graphviz-plot/
+
+#### DAG bees - Inflorescences
+```{r}
+DAG <- dagify(
+  outcome ~ treatment + var1 + var2 + var3,
+  treatment ~ var1 + var2 + var3,
+  exposure = "treatment",
+  outcome = "outcome",
+  labels = c(outcome = "Wild bees", treatment = "Inflorescences", 
+    var1 = "Elevation", 
+    var2 = "Early > Late", 
+    var3 = "Early > Late"),
+coords = list(
+  x = c(treatment = 1, var1 = 0.8, 
+        var2 =  1.2, var3 = 1.8,  
+        outcome = 1),
+  y = c(treatment = 0,var1 = 0.7,
+        var2 = 1, var3 = 1, 
+        outcome = -0.5)))
+
+DAGtidy <- ggdag::tidy_dagitty(DAG)
+DAGplot <- shorten_dag_arrows(DAGtidy, 
+                              shorten_distance = 0.09)
+
+p=DAGplot %>% 
+   ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+
+  annotate("rect",xmin = 1, xmax = 1.4,
+                  ymin = 0.8, ymax = 1.2, 
+                  alpha=0.2, fill="green")+
+  annotate("rect",xmin = 1.6, xmax = 2, 
+                  ymin = 0.8, ymax = 1.2, 
+                  alpha=0.2,fill="red") +
+  geom_dag_edges_arc(curvature = 
+                c(0,-0.5,
+                  0,0.5,
+                  0,0.5,
+                  0,0.5,
+                  0))+
+   geom_dag_point(aes(fill = factor(label)),
+                  shape = 21, colour = "black",
+                  size = 38, stroke = 1,show.legend = FALSE) +
+ # scale_fill_manual(values=rainbow(4))+
+    scale_fill_manual(values=c("grey75", #earlyLate
+                               "gray95", # elevation
+                               "pink",# inflorescences
+                               "lightgoldenrod1"))+ #insect
+   geom_dag_text(aes(x = x, y = y, label = label),
+               inherit.aes = FALSE, size = 4, colour="black") +
+  theme_dag() +
+    annotate("text",
+           x = c(1.15, 1.75),
+           y = c(1.25, 1.25), 
+           label = c("Early summer","Mid/late summer"));p
+```
+
+##### TD
+```{r}
+datTD = hypothesesResults %>% dplyr::filter(group=="bee",diversity=="TD",Hypothesis!="elevation > 0") %>% dplyr::select(Hypothesis,group,diversity,model,Post.Prob,alpha_0.9,alpha_0.95)
+
+#plants
+pdat = datTD %>% dplyr::filter(model =="p") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+# insects
+idat = datTD %>% dplyr::filter(model =="i") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+i_elev = idat[which(idat$term=="elevation < 0"),"postProb"]
+i_sp1e_bigger_l=idat[which(idat$term=="SP1: early > late"),"postProb"]
+i_sp2e_bigger_l=idat[which(idat$term=="SP2: early > late"),"postProb"]
+
+i_p = idat[which(idat$term=="nInflorescences > 0"),"postProb"]
+
+p_elev=pdat[which(pdat$term=="elevation < 0"),"postProb"]
+p_sp1e_bigger_l=pdat[which(pdat$term=="SP1: early > late"),"postProb"]
+p_sp2e_bigger_l=pdat[which(pdat$term=="SP2: early > late"),"postProb"]
+
+
+rm(.Random.seed, envir=globalenv())
+set.seed(1)
+beeTD = p + 
+  annotate("text",
+           x = probX,y = probY, parse = TRUE, 
+           label = c(
+             deparse(bquote(atop(.(i_elev),"(-)"))) ,  
+             deparse(bquote(atop(.(p_elev),"(-)"))), 
+             deparse(bquote(atop(.(p_sp1e_bigger_l),"(+)"))), 
+             deparse(bquote(atop(.(p_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_sp1e_bigger_l),"(+)"))),    
+             deparse(bquote(atop(.(i_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_p),"(+)")))
+           )) # insect
+beeTD
+```
+
+##### PD
+```{r}
+datPD = hypothesesResults %>% dplyr::filter(group=="bee",diversity=="PD",Hypothesis!="elevation > 0") %>% dplyr::select(Hypothesis,group,diversity,model,Post.Prob,alpha_0.9,alpha_0.95)
+
+#plants
+pdat = datPD %>% dplyr::filter(model =="p") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+# insects
+idat = datPD %>% dplyr::filter(model =="i") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+i_elev = idat[which(idat$term=="elevation < 0"),"postProb"]
+i_sp1e_bigger_l=idat[which(idat$term=="SP1: early > late"),"postProb"]
+i_sp2e_bigger_l=idat[which(idat$term=="SP2: early > late"),"postProb"]
+
+i_p = idat[which(idat$term=="nInflorescences > 0"),"postProb"]
+
+p_elev=pdat[which(pdat$term=="elevation < 0"),"postProb"]
+p_sp1e_bigger_l=pdat[which(pdat$term=="SP1: early > late"),"postProb"]
+p_sp2e_bigger_l=pdat[which(pdat$term=="SP2: early > late"),"postProb"]
+
+
+rm(.Random.seed, envir=globalenv())
+set.seed(1)
+beePD = p + 
+  annotate("text",
+           x = probX,y = probY, parse = TRUE, 
+           label = c(
+             deparse(bquote(atop(.(i_elev),"(-)"))) ,  
+             deparse(bquote(atop(.(p_elev),"(-)"))), 
+             deparse(bquote(atop(.(p_sp1e_bigger_l),"(+)"))), 
+             deparse(bquote(atop(.(p_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_sp1e_bigger_l),"(+)"))),    
+             deparse(bquote(atop(.(i_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_p),"(+)")))
+           )) # insect
+beePD
+```
+
+##### FD
+```{r}
+datFD = hypothesesResults %>% dplyr::filter(group=="bee",diversity=="FD",Hypothesis!="elevation > 0") %>% dplyr::select(Hypothesis,group,diversity,model,Post.Prob,alpha_0.9,alpha_0.95)
+
+#plants
+pdat = datFD %>% dplyr::filter(model =="p") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+# insects
+idat = datFD %>% dplyr::filter(model =="i") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+i_elev = idat[which(idat$term=="elevation < 0"),"postProb"]
+i_sp1e_bigger_l=idat[which(idat$term=="SP1: early > late"),"postProb"]
+i_sp2e_bigger_l=idat[which(idat$term=="SP2: early > late"),"postProb"]
+
+i_p = idat[which(idat$term=="nInflorescences > 0"),"postProb"]
+
+p_elev=pdat[which(pdat$term=="elevation < 0"),"postProb"]
+p_sp1e_bigger_l=pdat[which(pdat$term=="SP1: early > late"),"postProb"]
+p_sp2e_bigger_l=pdat[which(pdat$term=="SP2: early > late"),"postProb"]
+
+
+rm(.Random.seed, envir=globalenv())
+set.seed(1)
+beeFD = p + 
+  annotate("text",
+           x = probX,y = probY, parse = TRUE, 
+           label = c(
+             deparse(bquote(atop(.(i_elev),"(-)"))) ,  
+             deparse(bquote(atop(.(p_elev),"(-)"))), 
+             deparse(bquote(atop(.(p_sp1e_bigger_l),"(+)"))), 
+             deparse(bquote(atop(.(p_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_sp1e_bigger_l),"(+)"))),    
+             deparse(bquote(atop(.(i_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_p),"(+)")))
+           )) # insect
+beeFD
+```
+
+
+
+
+
+#### DAG butterfly - Inflorescences
+```{r}
+DAG <- dagify(
+  outcome ~ treatment + var1 + var2 + var3,
+  treatment ~ var1 + var2 + var3,
+  exposure = "treatment",
+  outcome = "outcome",
+  labels = c(outcome = "Butterflies", treatment = "Inflorescences", 
+    var1 = "Elevation", 
+    var2 = "Early > Late", 
+    var3 = "Early > Late"),
+coords = list(
+  x = c(treatment = 1, var1 = 0.8, 
+        var2 =  1.2, var3 = 1.8,  
+        outcome = 1),
+  y = c(treatment = 0,var1 = 0.7,
+        var2 = 1, var3 = 1, 
+        outcome = -0.5)))
+
+DAGtidy <- ggdag::tidy_dagitty(DAG)
+DAGplot <- shorten_dag_arrows(DAGtidy, 
+                              shorten_distance = 0.09)
+
+p=DAGplot %>% 
+   ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+
+  annotate("rect",xmin = 1, xmax = 1.4,
+                  ymin = 0.8, ymax = 1.2, 
+                  alpha=0.2, fill="green")+
+  annotate("rect",xmin = 1.6, xmax = 2, 
+                  ymin = 0.8, ymax = 1.2, 
+                  alpha=0.2,fill="red") +
+  geom_dag_edges_arc(curvature = 
+                c(0,-0.5,
+                  0,0.5,
+                  0,0.5,
+                  0,0.5,
+                  0))+
+   geom_dag_point(aes(fill = factor(label)),
+                  shape = 21, colour = "black",
+                  size = 38, stroke = 1,show.legend = FALSE) +
+    scale_fill_manual(values=c("lightgoldenrod1",
+                               "grey75", #earlyLate
+                               "gray95", # elevation
+                               "pink"))+ #insect
+   geom_dag_text(aes(x = x, y = y, label = label),
+               inherit.aes = FALSE, size = 4, colour="black") +
+  theme_dag() +
+    annotate("text",
+           x = c(1.15, 1.75),
+           y = c(1.25, 1.25), 
+           label = c("Early summer","Mid/late summer"));p
+```
+
+##### TD
+```{r}
+datTD = hypothesesResults %>% dplyr::filter(group=="butterfly",diversity=="TD",Hypothesis!="elevation > 0") %>% dplyr::select(Hypothesis,group,diversity,model,Post.Prob,alpha_0.9,alpha_0.95)
+
+#plants
+pdat = datTD %>% dplyr::filter(model =="p") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+# insects
+idat = datTD %>% dplyr::filter(model =="i") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+i_elev = idat[which(idat$term=="elevation < 0"),"postProb"]
+i_sp1e_bigger_l=idat[which(idat$term=="SP1: early > late"),"postProb"]
+i_sp2e_bigger_l=idat[which(idat$term=="SP2: early > late"),"postProb"]
+
+i_p = idat[which(idat$term=="nInflorescences > 0"),"postProb"]
+
+p_elev=pdat[which(pdat$term=="elevation < 0"),"postProb"]
+p_sp1e_bigger_l=pdat[which(pdat$term=="SP1: early > late"),"postProb"]
+p_sp2e_bigger_l=pdat[which(pdat$term=="SP2: early > late"),"postProb"]
+
+
+rm(.Random.seed, envir=globalenv())
+set.seed(1)
+butterflyTD = p + 
+  annotate("text",
+           x = probX,y = probY, parse = TRUE, 
+           label = c(
+             deparse(bquote(atop(.(i_elev),"(-)"))) ,  
+             deparse(bquote(atop(.(p_elev),"(-)"))), 
+             deparse(bquote(atop(.(p_sp1e_bigger_l),"(+)"))), 
+             deparse(bquote(atop(.(p_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_sp1e_bigger_l),"(+)"))),    
+             deparse(bquote(atop(.(i_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_p),"(+)")))
+           )) # insect
+butterflyTD
+```
+
+##### PD
+```{r}
+datPD = hypothesesResults %>% dplyr::filter(group=="butterfly",diversity=="PD",Hypothesis!="elevation > 0") %>% dplyr::select(Hypothesis,group,diversity,model,Post.Prob,alpha_0.9,alpha_0.95)
+
+#plants
+pdat = datPD %>% dplyr::filter(model =="p") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+# insects
+idat = datPD %>% dplyr::filter(model =="i") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+i_elev = idat[which(idat$term=="elevation < 0"),"postProb"]
+i_sp1e_bigger_l=idat[which(idat$term=="SP1: early > late"),"postProb"]
+i_sp2e_bigger_l=idat[which(idat$term=="SP2: early > late"),"postProb"]
+
+i_p = idat[which(idat$term=="nInflorescences > 0"),"postProb"]
+
+p_elev=pdat[which(pdat$term=="elevation < 0"),"postProb"]
+p_sp1e_bigger_l=pdat[which(pdat$term=="SP1: early > late"),"postProb"]
+p_sp2e_bigger_l=pdat[which(pdat$term=="SP2: early > late"),"postProb"]
+
+
+rm(.Random.seed, envir=globalenv())
+set.seed(1)
+butterflyPD = p + 
+  annotate("text",
+           x = probX,y = probY, parse = TRUE, 
+           label = c(
+             deparse(bquote(atop(.(i_elev),"(-)"))) ,  
+             deparse(bquote(atop(.(p_elev),"(-)"))), 
+             deparse(bquote(atop(.(p_sp1e_bigger_l),"(+)"))), 
+             deparse(bquote(atop(.(p_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_sp1e_bigger_l),"(+)"))),    
+             deparse(bquote(atop(.(i_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_p),"(+)")))
+           )) # insect
+butterflyPD
+```
+
+##### FD
+```{r}
+datFD = hypothesesResults %>% dplyr::filter(group=="butterfly",diversity=="FD",Hypothesis!="elevation > 0") %>% dplyr::select(Hypothesis,group,diversity,model,Post.Prob,alpha_0.9,alpha_0.95)
+
+#plants
+pdat = datFD %>% dplyr::filter(model =="p") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+# insects
+idat = datFD %>% dplyr::filter(model =="i") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+i_elev = idat[which(idat$term=="elevation < 0"),"postProb"]
+i_sp1e_bigger_l=idat[which(idat$term=="SP1: early > late"),"postProb"]
+i_sp2e_bigger_l=idat[which(idat$term=="SP2: early > late"),"postProb"]
+
+i_p = idat[which(idat$term=="nInflorescences > 0"),"postProb"]
+
+p_elev=pdat[which(pdat$term=="elevation < 0"),"postProb"]
+p_sp1e_bigger_l=pdat[which(pdat$term=="SP1: early > late"),"postProb"]
+p_sp2e_bigger_l=pdat[which(pdat$term=="SP2: early > late"),"postProb"]
+
+
+rm(.Random.seed, envir=globalenv())
+set.seed(1)
+butterflyFD = p + 
+  annotate("text",
+           x = probX,y = probY, parse = TRUE, 
+           label = c(
+             deparse(bquote(atop(.(i_elev),"(-)"))) ,  
+             deparse(bquote(atop(.(p_elev),"(-)"))), 
+             deparse(bquote(atop(.(p_sp1e_bigger_l),"(+)"))), 
+             deparse(bquote(atop(.(p_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_sp1e_bigger_l),"(+)"))),    
+             deparse(bquote(atop(.(i_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_p),"(+)")))
+           )) # insect
+butterflyFD
+```
+
+
+
+#### DAG planthopper - Plant height
+```{r}
+DAG <- dagify(
+  outcome ~ treatment + var1 + var2 + var3,
+  treatment ~ var1 + var2 + var3,
+  exposure = "treatment",
+  outcome = "outcome",
+  labels = c(outcome = "Planthoppers", 
+             treatment = "Sward height",
+    var1 = "Elevation", 
+    var2 = "Early > Late", 
+    var3 = "Early > Late"),
+coords = list(
+  x = c(treatment = 1, var1 = 0.8, 
+        var2 =  1.2, var3 = 1.8,  
+        outcome = 1),
+  y = c(treatment = 0,var1 = 0.7,
+        var2 = 1, var3 = 1, 
+        outcome = -0.5)))
+
+DAGtidy <- ggdag::tidy_dagitty(DAG)
+DAGplot <- shorten_dag_arrows(DAGtidy, 
+                              shorten_distance = 0.09)
+
+p=DAGplot %>% 
+   ggplot(aes(x = x, y = y, xend = xend, yend = yend)) +
+
+  annotate("rect",xmin = 1, xmax = 1.4,
+                  ymin = 0.8, ymax = 1.2, 
+                  alpha=0.2, fill="green")+
+  annotate("rect",xmin = 1.6, xmax = 2, 
+                  ymin = 0.8, ymax = 1.2, 
+                  alpha=0.2,fill="red") +
+  geom_dag_edges_arc(curvature = 
+                c(0,-0.5,
+                  0,0.5,
+                  0,0.5,
+                  0,0.5,
+                  0))+
+   geom_dag_point(aes(fill = factor(label)),
+                  shape = 21, colour = "black",
+                  size = 38, stroke = 1,show.legend = FALSE) +
+    scale_fill_manual(values=c("grey75", #earlyLate
+                               "gray95", # elevation
+                               "pink",# inflorescences
+                               "lightgoldenrod1"))+ #insect
+   geom_dag_text(aes(x = x, y = y, label = label),
+               inherit.aes = FALSE, size = 4, colour="black") +
+  theme_dag() +
+    annotate("text",
+           x = c(1.15, 1.75),
+           y = c(1.25, 1.25), 
+           label = c("Early summer","Mid/late summer"));p
+```
+
+##### TD
+```{r}
+datTD = hypothesesResults %>% dplyr::filter(group=="planthopper2",diversity=="TD",Hypothesis!="elevation > 0") %>% dplyr::select(Hypothesis,group,diversity,model,Post.Prob,alpha_0.9,alpha_0.95)
+
+#plants
+pdat = datTD %>% dplyr::filter(model =="p") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+# insects
+idat = datTD %>% dplyr::filter(model =="i") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+i_elev = idat[which(idat$term=="elevation < 0"),"postProb"]
+i_sp1e_bigger_l=idat[which(idat$term=="SP1: early > late"),"postProb"]
+i_sp2e_bigger_l=idat[which(idat$term=="SP2: early > late"),"postProb"]
+
+i_p = idat[which(idat$term=="height > 0"),"postProb"]
+
+p_elev=pdat[which(pdat$term=="elevation < 0"),"postProb"]
+p_sp1e_bigger_l=pdat[which(pdat$term=="SP1: early > late"),"postProb"]
+p_sp2e_bigger_l=pdat[which(pdat$term=="SP2: early > late"),"postProb"]
+
+
+rm(.Random.seed, envir=globalenv())
+set.seed(1)
+planthopperTD = p + 
+  annotate("text",
+           x = probX,y = probY, parse = TRUE,
+           label = c(
+             deparse(bquote(atop(.(i_elev),"(-)"))) ,  
+             deparse(bquote(atop(.(p_elev),"(-)"))), 
+             deparse(bquote(atop(.(p_sp1e_bigger_l),"(+)"))), 
+             deparse(bquote(atop(.(p_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_sp1e_bigger_l),"(+)"))),    
+             deparse(bquote(atop(.(i_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_p),"(+)")))
+           ))
+
+planthopperTD
+```
+
+
+##### PD
+```{r}
+datPD = hypothesesResults %>% dplyr::filter(group=="planthopper2",diversity=="PD",Hypothesis!="elevation > 0") %>% dplyr::select(Hypothesis,group,diversity,model,Post.Prob,alpha_0.9,alpha_0.95)
+
+#plants
+pdat = datPD %>% dplyr::filter(model =="p") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+# insects
+idat = datPD %>% dplyr::filter(model =="i") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+i_elev = idat[which(idat$term=="elevation < 0"),"postProb"]
+i_sp1e_bigger_l=idat[which(idat$term=="SP1: early > late"),"postProb"]
+i_sp2e_bigger_l=idat[which(idat$term=="SP2: early > late"),"postProb"]
+
+i_p = idat[which(idat$term=="height > 0"),"postProb"]
+
+p_elev=pdat[which(pdat$term=="elevation < 0"),"postProb"]
+p_sp1e_bigger_l=pdat[which(pdat$term=="SP1: early > late"),"postProb"]
+p_sp2e_bigger_l=pdat[which(pdat$term=="SP2: early > late"),"postProb"]
+
+
+rm(.Random.seed, envir=globalenv())
+set.seed(1)
+planthopperPD = p + 
+  annotate("text",
+           x = probX,y = probY, parse = TRUE, 
+           label = c(
+             deparse(bquote(atop(.(i_elev),"(-)"))) ,  
+             deparse(bquote(atop(.(p_elev),"(-)"))), 
+             deparse(bquote(atop(.(p_sp1e_bigger_l),"(+)"))), 
+             deparse(bquote(atop(.(p_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_sp1e_bigger_l),"(+)"))),    
+             deparse(bquote(atop(.(i_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_p),"(+)")))
+                    )) # insect
+planthopperPD
+```
+
+##### FD
+```{r}
+datFD = hypothesesResults %>% dplyr::filter(group=="planthopper2",diversity=="FD",Hypothesis!="elevation > 0") %>% dplyr::select(Hypothesis,group,diversity,model,Post.Prob,alpha_0.9,alpha_0.95)
+
+#plants
+pdat = datFD %>% dplyr::filter(model =="p") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+# insects
+idat = datFD %>% dplyr::filter(model =="i") %>% dplyr::select(Hypothesis,Post.Prob) %>%
+  mutate(postProb = round(Post.Prob,2),term=Hypothesis)
+
+i_elev = idat[which(idat$term=="elevation < 0"),"postProb"]
+i_sp1e_bigger_l=idat[which(idat$term=="SP1: early > late"),"postProb"]
+i_sp2e_bigger_l=idat[which(idat$term=="SP2: early > late"),"postProb"]
+
+i_p = idat[which(idat$term=="height > 0"),"postProb"]
+
+p_elev=pdat[which(pdat$term=="elevation < 0"),"postProb"]
+p_sp1e_bigger_l=pdat[which(pdat$term=="SP1: early > late"),"postProb"]
+p_sp2e_bigger_l=pdat[which(pdat$term=="SP2: early > late"),"postProb"]
+
+
+rm(.Random.seed, envir=globalenv())
+set.seed(1)
+planthopperFD = p + 
+  annotate("text",
+           x = probX,y = probY, parse = TRUE, 
+           label = c(
+             deparse(bquote(atop(.(i_elev),"(-)"))) ,  
+             deparse(bquote(atop(.(p_elev),"(-)"))), 
+             deparse(bquote(atop(.(p_sp1e_bigger_l),"(+)"))), 
+             deparse(bquote(atop(.(p_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_sp1e_bigger_l),"(+)"))),    
+             deparse(bquote(atop(.(i_sp2e_bigger_l),"(+)"))),
+             deparse(bquote(atop(.(i_p),"(+)")))
+           )) # insect
+planthopperFD
+```
+
+
+
+### Combined tables
+```{r}
+g1 = beeTD + 
+  ggtitle("Wildbees")+
+  theme(plot.title = element_text(hjust = 0.5,
+                                  size = 30, face = "bold"))
+g2 = butterflyTD + 
+  ggtitle("Butterflies")+
+  theme(plot.title = element_text(hjust = 0.5,
+                                  size = 30, face = "bold"))
+g3 = planthopperTD + 
+  ggtitle("Planthoppers")+
+  theme(plot.title = element_text(hjust = 0.5,
+                                  size = 30, face = "bold"))
+
+gNULL = ggplot() + theme_void()
+
+ggpubr::ggarrange(g1, gNULL, g2, gNULL,g3,
+                  ncol=5,
+                  common.legend = TRUE, legend="bottom",
+                  widths = c(1, 0.00001, 1, 0.00001, 1),
+  labels = c("(A)","" ,"(B)","", "(C)"))
+```
+

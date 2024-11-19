@@ -1,0 +1,221 @@
+---
+title: "Comparisons of sample coverages using iNext"
+author: "Bernd Panassiti"
+date: 'created: 07.06.2023, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+opts_chunk$set(fig.align='center',                # aligns all figures
+                echo=FALSE,                       # shows r-code
+                results='hide',                    # don't display results
+                message=FALSE,                    # suppresses library outputs
+                warnings=FALSE,                   # suppresses library outputs
+                fig.show ='hide',
+                tidy=TRUE,  # prevents the source code from running off a pdf page
+                dev='pdf')                        # pdf device
+```
+
+
+For installation of iNEXT.beta3D:
+
+https://github.com/AnneChao/iNEXT.beta3D
+
+
+```{r load,, warning=FALSE}
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load("tidyverse","vegan","reshape2","magrittr","caret","ggplot2",
+       "iNEXT","iNEXT.beta3D","data.table",
+       "FD","gawdis")
+source("r-code/00_functions.R")
+load("data/data_prep.RData")
+```
+
+# Introduction
+The co-occurrence dataset contains data on **pol**linators (wildplanthoppers, butterflies, hoverflies) and **phy**tophagous species (planthoppers).  
+  
+The following data are available:  
+
+* year: **pol** (2021,2022), **phy** (2021)
+* survey periods: **pol** (1,2), **phy** (2)
+* treatments: control, early, late
+
+Create list to save the following datasets:
+* alpha TD
+* alpha PD
+* alpha FD
+* beta TD
+* beta PD
+* beta FD
+
+
+# Warning message due to "future" package
+# https://github.com/satijalab/seurat/issues/3622
+options(future.rng.onMisuse="ignore")
+
+
+
+# Data preparation
+## TD dataframe
+```{r}
+dfPlanthopper = planthopper.abund %>%
+  dplyr::group_by(species,plot_id)  %>%
+  dplyr::summarise(count=sum(count))
+
+planthopperAbuTD = data.frame(reshape::cast(dfPlanthopper,species~plot_id,fill=0))
+rownames(planthopperAbuTD) = planthopperAbuTD[,1]
+planthopperAbuTD = planthopperAbuTD[,-1] # remove column species
+```
+
+
+## PD dataframe
+### Check for same species names with trait matrix
+```{r}
+planthopperAbuPD = planthopperAbuTD
+
+iTree = planthopperTreeComm
+iTree$node.label =  paste("match",rep(1:length(iTree$node.label)),sep="_")
+
+
+# which species in in planthopper dataframe are not in traits
+planthopperAbuPD = planthopperAbuPD[-which(!rownames(planthopperAbuPD) %in% iTree$tip.label),]
+
+# cbind(1:ncol(planthopperAbuPD),apply(planthopperAbuPD,2,function(x) length(which(x>0))))
+# remove plots 0 or 1 species
+
+#which(apply(planthopperAbuPD,2,function(x) length(which(x>0)))<2)
+```
+
+
+## FD dataframe
+### Check for same species names with trait matrix
+```{r}
+planthopperAbuFD = planthopperAbuTD
+
+iTraits = planthopperTraits
+iTraits$species = gsub(" ","_",planthopperTraits$species) # recode species names with underline
+
+# which species in planthopper dataframe are not in traits
+planthopperAbuFD= planthopperAbuFD[-which(!rownames(planthopperAbuFD) %in% iTraits$species),]
+
+# cbind(1:ncol(planthopperAbuFD),apply(planthopperAbuFD,2,function(x) length(which(x>0))))
+
+# remove plots with 0 or 1 species
+#which(apply(planthopperAbuFD,2,function(x) length(which(x>0)))<2)
+
+
+
+
+# which species in traits are not in planthopper dataframe
+iTraits = iTraits[-which(!iTraits$species %in% rownames(planthopperAbuFD)),]
+
+
+# rownames(iTraits) = iTraits$species
+# planthopperAbu_distM <- FD::gowdis(iTraits[,-c(1:2)])
+planthopperAbu_distM <-data.frame(StatMatch::gower.dist(iTraits[,-c(1:2)]))
+colnames(planthopperAbu_distM) =  iTraits$species
+rownames(planthopperAbu_distM) =  iTraits$species
+```
+
+
+## Save all datasets in list
+```{r}
+planthopperInput = list(
+  planthopperAbuTD = planthopperAbuTD,
+  planthopperAbuPD = planthopperAbuPD, # not columns with less than 2 species and only species that are also in tree
+  planthopperAbuFD = planthopperAbuFD, # not columns with less than 2 species and only species that are also in trait matrix
+  iTree = iTree,
+  iDistM = planthopperAbu_distM)
+```
+
+# Calculate estimates
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+out.TD <- iNEXT.3D::estimate3D(data = planthopperInput$planthopperAbuTD, diversity = "TD", 
+               q = 0, datatype = "abundance", 
+               base = "coverage", level = 0.7,
+               nboot = 30)
+
+
+out.PD <- iNEXT.3D::estimate3D(data = planthopperInput$planthopperAbuPD, diversity = "PD", 
+               q = 0, datatype = "abundance", 
+               PDtree = planthopperInput$iTree,
+               base = "coverage", level = 0.7,
+               nboot = 30)
+
+
+out.FD <- iNEXT.3D::estimate3D(data = planthopperInput$planthopperAbuFD, diversity = "FD", 
+               q = 0, datatype = "abundance", 
+               FDdistM = planthopperInput$iDistM,
+               base = "coverage", level = 0.7,
+               nboot = 30)
+```
+
+
+
+```{r}
+planthopper.TD = out.TD
+planthopper.PD = out.PD
+planthopper.FD = out.FD
+```
+
+
+# Combine all datasets
+```{r}
+out1 = out.TD %>% dplyr::mutate(diversityType ="TD")  %>%
+                  dplyr::select(plot_id = Assemblage,diversityType,
+                         qHill = Order.q, obs = m, 
+                         estimate = qTD, sd= s.e., lowCI = qTD.LCL, highCI= qTD.UCL,
+                         sampleCoverage = SC,method = Method)
+                  
+
+out2 = out.PD %>% dplyr::mutate(diversityType ="PD")  %>%
+                  dplyr::select(plot_id = Assemblage,diversityType,
+                         qHill = Order.q, obs = m, 
+                         estimate = qPD, sd = s.e., lowCI = qPD.LCL, highCI = qPD.UCL,
+                         sampleCoverage = SC,method = Method)
+
+out3 = out.FD %>% dplyr::mutate(diversityType ="FD")  %>%
+                  dplyr::select(plot_id = Assemblage,diversityType,
+                         qHill = Order.q, obs = m, 
+                         estimate = qFD, sd = s.e., lowCI = qFD.LCL, highCI = qFD.UCL,
+                         sampleCoverage = SC,method = Method)
+
+out = as_tibble(bind_rows(out1,out2,out3))
+
+planthopperDiversity = out
+
+planthopperDiversity$site_id = as.character(sapply(planthopperDiversity$plot_id, function(x) str_split(x,"_")[[1]][1]))
+planthopperDiversity$survey_period = as.character(sapply(planthopperDiversity$plot_id, function(x) str_split(x,"_")[[1]][2]))
+planthopperDiversity$year = 2021
+planthopperDiversity$grazingTime = as.character(sapply(planthopperDiversity$plot_id, function(x) str_split(x,"_")[[1]][3]))
+```
+
+## Modify plot id
+```{r}
+planthopperDiversity[,1] = apply(planthopperDiversity[,1], 1,function(x){
+paste(str_split(x,"_")[[1]][1],
+      str_split(x,"_")[[1]][2],
+      "2021",
+      str_split(x,"_")[[1]][3],sep="_")})
+```
+
+
+
+```{r}
+save(planthopperInput,planthopperDiversity,
+     planthopper.TD,planthopper.FD,planthopper.PD,
+     file="results/iNEXT3d_planthopper.RData")
+```
+

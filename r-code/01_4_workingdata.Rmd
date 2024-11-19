@@ -1,0 +1,182 @@
+---
+title: "Preparation of working data"
+author: "Bernd Panassiti"
+date: 'created: 07.06.2023, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+opts_chunk$set(fig.align='center',                # aligns all figures
+                echo=FALSE,                       # shows r-code
+                results='hide',                    # don't display results
+                message=FALSE,                    # suppresses library outputs
+                warnings=FALSE,                   # suppresses library outputs
+                fig.show ='hide',
+                tidy=TRUE,  # prevents the source code from running off a pdf page
+                dev='pdf')                        # pdf device
+```
+
+
+```{r load,, warning=FALSE}
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load("tidyverse","vegan","reshape2","magrittr","caret","ggplot2")
+source("r-code/00_functions.R")
+load("data/rawdata.RData")
+load("results/iNEXT3d_bee.RData")
+load("results/iNEXT3d_butterfly.RData")
+load("results/iNEXT3d_planthopper.RData")
+```
+
+
+
+# Data preparation
+
+```{r}
+dfbee = beeDiversity%>% tibble::add_column(group = rep("bee",nrow(beeDiversity)))
+dfbutterfly = butterflyDiversity%>% tibble::add_column(group = rep("butterfly",nrow(butterflyDiversity)))
+dfplanthopper = planthopperDiversity%>% tibble::add_column(group = rep("planthopper",nrow(planthopperDiversity)))
+
+dfInsects = bind_rows(dfbee,dfbutterfly,dfplanthopper) %>%
+  dplyr::rename(grazing_time = grazingTime) %>%
+  dplyr::mutate(response = paste(group,diversityType,"q",qHill,sep="")) %>%
+  dplyr::select(plot_id,site_id, survey_period,year,grazing_time,response,estimate)
+
+
+#dfIns = reshape::cast(dfInsects,plot_id+site_id+survey_period+year+grazing_time ~ response)
+dfIns = dfInsects %>%
+  pivot_wider(names_from = response, values_from = estimate, values_fill = NA)
+dfIns %<>% dplyr::arrange(year,site_id,survey_period,grazing_time)
+```
+
+## Which plots have not been surveyed?
+A001: 2022
+A004: 2022, survey period 1
+A007: 2022, survey period 2
+
+A005: 2021, survey period 1 early intensive
+A008: 2021, survey period 1 late intensive
+
+All other need to be set to 0 (no species found).
+
+- missing plots for bees/butterflies from 2021 automatically filled, because planthopper sampling from 2021 complete 
+- 2 plots from 2022 were missing because neither bees or butterflies have been recorded.
+```{r}
+df = dfIns
+# bee missing zeros
+beeZero = obsTimesPollinators[which(obsTimesPollinators$bee==0),"plot_id"]
+
+#add missing plots for year 2022 for bees
+beeZeroPlotsNotInDF = beeZero[which(!beeZero %in%df$plot_id)]
+# beeZeroPlotsNotInDFins
+# [1] "A002_2_2022_early" "A007_1_2022_late" 
+
+df  = data.frame(rbind(df,
+c("A002_2_2022_early","A002",2,2022,"early",rep(NA,9)),
+c("A007_1_2022_late","A007",1,2022,"late",rep(NA,9))))
+
+df[which(df$plot_id %in% beeZero),"beeTDq0"] = 0
+df[which(df$plot_id %in% beeZero),"beePDq0"] = 0
+df[which(df$plot_id %in% beeZero),"beeFDq0"] = 0
+
+
+# butterfly missing zeros
+butterflyZero = obsTimesPollinators[which(obsTimesPollinators$butterfly==0),"plot_id"]
+
+df[which(df$plot_id %in% butterflyZero),"butterflyTDq0"] = 0
+df[which(df$plot_id %in% butterflyZero),"butterflyPDq0"] = 0
+df[which(df$plot_id %in% butterflyZero),"butterflyFDq0"] = 0
+
+dfIns = df
+```
+
+
+```{r}
+dfIns %<>% mutate(survey_period = as.numeric(survey_period),
+                  year = as.numeric(year),
+                  beeTDq0 = as.numeric(beeTDq0),
+                  beePDq0 = as.numeric(beePDq0),
+                  beeFDq0 = as.numeric(beeFDq0),
+                  butterflyTDq0 = as.numeric( butterflyTDq0),
+                  butterflyPDq0 = as.numeric( butterflyPDq0),
+                  butterflyFDq0 = as.numeric( butterflyFDq0),
+                  planthopperTDq0 = as.numeric(planthopperTDq0),
+                  planthopperPDq0 = as.numeric(planthopperPDq0),
+                  planthopperFDq0 = as.numeric(planthopperFDq0),
+                  )
+```
+
+
+```{r}
+dfVeg = veg %>% dplyr::rename(nPlantSpecies = nSpecies)
+
+dfInPl = merge(dfIns,dfVeg,
+               by=c("site_id","year","survey_period","grazing_time"),all.x = T)
+data = merge(dfInPl,sitesTime,
+              by.y=c("site_id","grazing_time"),all.x = T)
+
+data$site_id <- factor(data$site_id)
+data$grazing_time <- factor(data$grazing_time, levels = c("control", "early", "late"))
+data$survey_period = as.factor(data$survey_period)
+data$year = as.factor(data$year)
+
+data$nInflorescenceCooccScaled = as.numeric(scale(data$nInflorescenceCooc))
+data$nPlantSpeciesScaled = as.numeric(scale(data$nPlantSpecies))
+data$coverHerbsScaled    = as.numeric(scale(data$coverHerbs))
+data$heightScaled        = as.numeric(scale(data$height))
+data$elevationScaled     = as.numeric(scale(data$elevation))
+
+# rename columns to avoid underscore
+data %<>%  dplyr::rename(siteID = site_id,
+                surveyPeriod = survey_period,
+                grazingTime = grazing_time)
+model_data = data
+```
+
+
+
+
+# Save working data
+
+```{r save}
+save(
+sites,sitesTime,
+alpinePastureCoocc,
+inflorescences,
+plots,
+
+obsTimesPollinators,
+
+# long table
+bee.abund,butterfly.abund,planthopper.abund,
+bee.coocc,butterfly.coocc,planthopper.coocc,
+
+wildbeeTraits,
+butterflyTraits,
+planthopperTraits,
+pollinatorPlantTraits,
+planthopperPlantTraits,
+
+# phylogenetic trees
+beeTreeNet, beeTreeComm, 
+butterflyTreeNet, butterflyTreeComm,
+planthopperTreeNet, planthopperTreeComm,
+plantTreeNet,plantTreeNetZik,
+
+veg,
+
+model_data,
+
+# iNEXT
+beeDiversity,butterflyDiversity,planthopperDiversity,
+
+file="data/workingdata.RData")
+```

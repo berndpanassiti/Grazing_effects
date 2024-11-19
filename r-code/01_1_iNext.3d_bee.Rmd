@@ -1,0 +1,363 @@
+---
+title: "Comparisons of sample coverages using iNext"
+author: "Bernd Panassiti"
+date: 'created: 07.06.2023, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+opts_chunk$set(fig.align='center',                # aligns all figures
+                echo=FALSE,                       # shows r-code
+                results='hide',                    # don't display results
+                message=FALSE,                    # suppresses library outputs
+                warnings=FALSE,                   # suppresses library outputs
+                fig.show ='hide',
+                tidy=TRUE,  # prevents the source code from running off a pdf page
+                dev='pdf')                        # pdf device
+```
+
+
+For installation of iNEXT.beta3D:
+
+https://github.com/AnneChao/iNEXT.beta3D
+
+
+```{r load,, warning=FALSE}
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load("tidyverse","vegan","reshape2","magrittr","caret","ggplot2",
+       "iNEXT","iNEXT.beta3D","data.table",
+       "FD","gawdis")
+source("r-code/00_functions.R")
+load("data/rawdata.RData")
+```
+
+# Introduction
+The co-occurrence dataset contains data on **pol**linators (wildbees, butterflies, hoverflies) and **phy**tophagous species (planthoppers).  
+  
+The following data are available:  
+
+* year: **pol** (2021,2022), **phy** (2021)
+* survey periods: **pol** (1,2), **phy** (2)
+* treatments: control, early, late
+
+Create list to save the following datasets:
+* alpha TD
+* alpha PD
+* alpha FD
+* beta TD
+* beta PD
+* beta FD
+
+Warning message due to "future" package
+https://github.com/satijalab/seurat/issues/3622
+options(future.rng.onMisuse="ignore")
+
+
+# Data preparation
+# TD dataframe
+```{r}
+dfHymenoptera = bee.abund %>%
+  dplyr::group_by(species,plot_id)  %>%
+  dplyr::summarise(count=sum(count))
+
+beeAbuTD = data.frame(reshape::cast(dfHymenoptera,species~plot_id,fill=0))
+rownames(beeAbuTD) = beeAbuTD[,1]
+beeAbuTD = beeAbuTD[,-1]
+
+# save plots with 0 species
+plots0speciesTD = names(which(apply(beeAbuTD,2,function(x) length(which(x>0)))==0))
+```
+
+
+# PD
+## check for same species names with trait matrix
+```{r}
+beeAbuPD = beeAbuTD
+
+iTree = beeTreeComm
+iTree$node.label =  paste("match",rep(1:length(iTree$node.label)),sep="_")
+
+
+# which species in in bee dataframe are not in tree
+beeAbuPDTree = beeAbuPD[-which(!rownames(beeAbuPD) %in% iTree$tip.label),]
+
+# cbind(1:ncol(beeAbuPD),apply(beeAbuPD,2,function(x) length(which(x>0))))
+# remove plots 1 species
+
+beeAbuPD = beeAbuPDTree[,-which(apply(beeAbuPDTree,2,function(x) length(which(x>0)))<2)]
+
+# remove plots 1 species
+plots0speciesPD = names(which(apply(beeAbuPDTree,2,function(x) length(which(x>0)))==0))
+plots1speciesPD = names(which(apply(beeAbuPDTree,2,function(x) length(which(x>0)))==1))
+```
+
+
+# FD
+## check for same species names with trait matrix
+```{r}
+beeAbuFD = beeAbuTD
+
+iTraits = wildbeeTraits
+iTraits$species = gsub(" ","_",wildbeeTraits$species) # recode species names with underline
+
+# which species in in bee dataframe are not in traits
+beeAbuFDTrait = beeAbuFD[-which(!rownames(beeAbuFD) %in% iTraits$species),]
+
+# cbind(1:ncol(beeAbuFD),apply(beeAbuFD,2,function(x) length(which(x>0))))
+# remove plots with 0 or 1 species
+
+beeAbuFD = beeAbuFDTrait[,-which(apply(beeAbuFDTrait,2,function(x) length(which(x>0)))<2)]
+
+plots0speciesFD = names(which(apply(beeAbuFDTrait,2,function(x) length(which(x>0)))==0))
+plots1speciesFD = names(which(apply(beeAbuFDTrait,2,function(x) length(which(x>0)))==1))
+
+
+
+
+# which species in traits are not in bee dataframe
+iTraits = iTraits[-which(!iTraits$species %in% rownames(beeAbuFD)),]
+
+
+# rownames(iTraits) = iTraits$species
+# beeAbu_distM <- FD::gowdis(iTraits[,-c(1:2)])
+beeAbu_distM <-data.frame(StatMatch::gower.dist(iTraits[,-c(1:2)]))
+colnames(beeAbu_distM) =  iTraits$species
+rownames(beeAbu_distM) =  iTraits$species
+```
+
+
+# Save all datasets in list
+```{r}
+beeInput = list(
+  beeAbuTD = beeAbuTD,
+  beeAbuPD = beeAbuPD,
+  beeAbuFD = beeAbuFD,
+  iTree = iTree,
+  iDistM = beeAbu_distM,
+  plots1speciesPD = plots1speciesPD,
+  plots0speciesPD = plots0speciesPD,
+  plots1speciesFD = plots1speciesFD,
+  plots0speciesFD = plots0speciesFD)
+```
+
+# Calculate estimates
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+out.TD <- iNEXT.3D::estimate3D(data = beeInput$beeAbuTD, diversity = "TD", 
+               q = 0, datatype = "abundance", 
+               base = "coverage", level = 0.7,
+               nboot = 30)
+
+
+
+out.FD <- iNEXT.3D::estimate3D(data = beeInput$beeAbuFD, diversity = "FD", 
+               q = 0, datatype = "abundance", 
+               FDdistM = beeInput$iDistM,
+               base = "coverage", level = 0.7,
+               nboot = 30)
+```
+
+
+Warnings for TD
+ In EstiBootComm.Ind(x_) :
+  This site has only one species. Estimation is not robust.
+
+
+
+
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+out.PD1 <- iNEXT.3D::estimate3D(data = beeInput$beeAbuPD[,1:40], diversity = "PD", 
+               q = c(0,1,2), datatype = "abundance", 
+               PDtree = beeInput$iTree,
+               base = "coverage", level = 0.7,
+               nboot = 2)
+
+out.PD2 <- iNEXT.3D::estimate3D(data = beeInput$beeAbuPD[,41:78], diversity = "PD", 
+               q = c(0,1,2), datatype = "abundance", 
+               PDtree = beeInput$iTree,
+               base = "coverage", level = 0.7,
+               nboot = 2)
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+outPDtmp = list()
+for (i in 1:ncol(beeInput$beeAbuPD)){
+dat = data.frame(beeInput$beeAbuPD[,i])
+rownames(dat) = rownames(beeInput$beeAbuPD)
+
+try(outPDtmp[[i]] <- iNEXT.3D::estimate3D(data = dat, diversity = "PD", 
+               q = 0, datatype = "abundance", 
+               PDtree = beeInput$iTree,
+               base = "coverage", level = 0.7,
+               nboot = 30))
+
+
+try(
+  outPDtmp[[i]]$Assemblage <- colnames(beeInput$beeAbuPD)[i]
+  ,silent=TRUE)
+  
+print(i)}
+
+
+# Fehler in if (refC > cvrg) { : Fehlender Wert, wo TRUE/FALSE nötig ist
+
+
+# generate estimates for sites with errors with set.seed(2023)
+newID = which(!lengths(outPDtmp))
+# newID
+#  7  8  9 12 13 16 27 33 50
+
+df = beeInput$beeAbuPD
+
+
+
+outNewID=list()
+for (i in 1:length(newID)){
+j=0
+out.id=list()
+
+while(length(which(lengths(out.id)!=0))<1){
+j=j+1
+rm(.Random.seed, envir=globalenv())
+set.seed(j)
+dat = data.frame(df[,newID[i]])
+rownames(dat) = rownames(df)
+
+try(out.id[[j]] <- iNEXT.3D::estimate3D(data = dat, diversity = "PD", 
+               q = 0, datatype = "abundance", 
+               PDtree = beeInput$iTree,
+               base = "coverage", level = 0.7,
+               nboot = 30))
+}
+out.id[[length(out.id)]]$Assemblage = colnames(df)[newID[i]]
+outNewID[[i]] = out.id
+print(newID[i])}
+
+# combine both list
+
+outList1 = outPDtmp[!unlist(lapply(outPDtmp,is.null))]
+outList1DF = do.call(rbind, outList1)
+
+outList2 = lapply(outNewID, function(x) x[!unlist(lapply(x,is.null))])
+outList2DF = do.call(rbind, lapply(outList2, `[[`, 1))
+
+
+out.PD = bind_rows(outList1DF,outList2DF)
+
+#save seed
+seedPD = data.frame(
+  plot_id =colnames(beeInput$beeAbuPD)[newID],
+  newSeed=unlist(lapply(outNewID, function(x) which(!unlist(lapply(x,is.null)))))
+  
+)
+```
+
+```{r}
+bee.TD = out.TD
+bee.PD = out.PD
+bee.FD = out.FD
+```
+
+
+
+# Combine all datasets
+```{r}
+out1 = out.TD %>% dplyr::mutate(diversityType ="TD")  %>%
+                  dplyr::select(plot_id = Assemblage,diversityType,
+                         qHill = Order.q, obs = m, 
+                         estimate = qTD, sd= s.e., lowCI = qTD.LCL, highCI= qTD.UCL,
+                         sampleCoverage = SC,method = Method)
+                  
+
+out2 = out.PD %>% dplyr::mutate(diversityType ="PD")  %>%
+                  dplyr::select(plot_id = Assemblage,diversityType,
+                         qHill = Order.q, obs = m, 
+                         estimate = qPD, sd = s.e., lowCI = qPD.LCL, highCI = qPD.UCL,
+                         sampleCoverage = SC,method = Method)
+
+out3 = out.FD %>% dplyr::mutate(diversityType ="FD")  %>%
+                  dplyr::select(plot_id = Assemblage,diversityType,
+                         qHill = Order.q, obs = m, 
+                         estimate = qFD, sd = s.e., lowCI = qFD.LCL, highCI = qFD.UCL,
+                         sampleCoverage = SC,method = Method)
+
+out = as_tibble(bind_rows(out1,out2,out3))
+
+
+##FD
+
+# plots1speciesFD 
+a = length(plots1speciesFD)
+out.FD1 = data.frame(plot_id=plots1speciesFD,diversityType = rep("FD",a),qHill = rep(0,a),
+                     obs=rep(1,a),
+                     estimate=rep(1,a),
+                     sd=rep(NA,a),lowCI=rep(NA,a),highCI=rep(NA,a),
+                     sampleCoverage = rep(0.7,a),
+                     method=rep("Observed",a))
+
+# plots0speciesFD
+a = length(plots0speciesFD)
+
+out.FD0 = data.frame(plot_id=plots0speciesFD,diversityType = rep("FD",a),qHill = rep(0,a),
+                     obs=rep(0,a),
+                     estimate=rep(0,a),
+                     sd=rep(NA,a),lowCI=rep(NA,a),highCI=rep(NA,a),
+                     sampleCoverage = rep(0.7,a),method=rep("Observed",a))
+
+
+##PD
+
+# plots1speciesPD 
+a = length(plots1speciesPD)
+
+out.PD1 = data.frame(plot_id=plots1speciesPD,diversityType = rep("PD",a),qHill = rep(0,a),
+                     obs=rep(1,a),
+                     estimate=rep(1,a),
+                     sd=rep(NA,a),lowCI=rep(NA,a),highCI=rep(NA,a),
+                     sampleCoverage = rep(0.7,a),method=rep("Observed",a))
+
+# plots0speciesPD
+a = length(plots0speciesPD)
+
+out.PD0 = data.frame(plot_id=plots0speciesPD,diversityType = rep("PD",a),qHill = rep(0,a),
+                     obs=rep(0,a),
+                     estimate=rep(0,a),
+                     sd=rep(NA,a),lowCI=rep(NA,a),highCI=rep(NA,a),
+                     sampleCoverage = rep(0.7,a),method=rep("Observed",a))
+
+
+
+#beeDiversity = list()
+beeDiversity = dplyr::bind_rows(out,out.PD1,out.PD0,out.FD1,out.FD0)
+
+beeDiversity$site_id = as.character(sapply(beeDiversity$plot_id, function(x) str_split(x,"_")[[1]][1]))
+beeDiversity$survey_period = as.character(sapply(beeDiversity$plot_id, function(x) str_split(x,"_")[[1]][2]))
+beeDiversity$year = as.integer(sapply(beeDiversity$plot_id, function(x) str_split(x,"_")[[1]][3]))
+beeDiversity$grazingTime = as.character(sapply(beeDiversity$plot_id, function(x) str_split(x,"_")[[1]][4]))
+
+beeDiversity %<>% dplyr::arrange(year,site_id,survey_period,grazingTime)
+```
+
+
+# save
+```{r}
+save(beeInput,
+     beeDiversity,
+     bee.TD,bee.FD,bee.PD,
+     file="results/iNEXT3d_bee.RData")
+```
+
