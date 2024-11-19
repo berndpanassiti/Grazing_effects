@@ -155,10 +155,11 @@ plots,
 
 obsTimesPollinators,
 
-# long table
+# insect abundances and cooccurrences
 bee.abund,butterfly.abund,planthopper.abund,
 bee.coocc,butterfly.coocc,planthopper.coocc,
 
+## insect traits
 wildbeeTraits,
 butterflyTraits,
 planthopperTraits,
@@ -171,8 +172,10 @@ butterflyTreeNet, butterflyTreeComm,
 planthopperTreeNet, planthopperTreeComm,
 plantTreeNet,plantTreeNetZik,
 
+# vegetation data
 veg,
 
+# input data for statistical models
 model_data,
 
 # iNEXT
