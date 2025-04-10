@@ -1,0 +1,781 @@
+---
+title: "Probabilites of the influence of grazing and environment on insect diversity"
+author: "Bernd Panassiti"
+date: 'created: 07.06.2023, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+opts_chunk$set(fig.align='center',                # aligns all figures
+                echo=TRUE,                        # shows r-code
+                message=FALSE,                    # suppresses library outputs
+                warnings=FALSE,                   # suppresses library outputs
+                tidy=TRUE,  # prevents the source code from running off a pdf page
+                dev='pdf')                        # pdf device
+```
+
+
+
+# Loading of packages and data
+```{r loading_data, include=FALSE}
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load(tidyverse,magrittr,broom.mixed,
+       posterior,ggdist,tidybayes,pryr,bayesplot,
+       emmeans,broom, broom.mixed,
+       posterior,brms,bayesplot)
+
+source("r-code/00_functions.R")
+
+load("results/modelResultsSEM.RData")
+```
+
+
+
+
+# Hypothesis
+
+Probabilities are calculated based on SEM results using defined hypotheses.
+
+
+http://mjskay.github.io/tidybayes/
+
+early < 0
+Post.Prob: The latter indicates the posterior probability that the parameter of interest is smaller than zero (> 0). (More accurately, the proportion of samples from the posterior that are smaller than zero.)
+
+
+Evid.Ratio: ratio of the hypothesis (Post.Prob)and its complement (the ratio of early > 0 and early < 0). 
+
+https://mspeekenbrink.github.io/sdam-r-companion/bayesian-hypothesis-testing-with-bayes-factors.html
+https://discourse.mc-stan.org/t/hypothesis-test-brms/28226/6
+
+
+```{r}
+fit = modelResultsTDVegetationManagement[[1]]
+
+
+conditional_effects(fit, effects = "surveyPeriod:grazingTime")
+
+# directional hypothesis that early is lower than control at the level of survey period 1
+
+Q1 = "beeTDq0_surveyPeriod1:grazingTimeearly < beeTDq0_surveyPeriod1:grazingTimelate"
+Q2 = "beeTDq0_surveyPeriod2:grazingTimeearly < beeTDq0_surveyPeriod2:grazingTimelate"
+Q3 = "((beeTDq0_surveyPeriod1:grazingTimeearly*0.5)+(beeTDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q4 = "((beeTDq0_surveyPeriod2:grazingTimeearly*0.5)+(beeTDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q5 = "nInflorescenceCoocc_surveyPeriod1:grazingTimeearly < nInflorescenceCoocc_surveyPeriod1:grazingTimelate"
+Q6 = "nInflorescenceCoocc_surveyPeriod2:grazingTimeearly > nInflorescenceCoocc_surveyPeriod2:grazingTimelate"
+Q7 = "((nInflorescenceCoocc_surveyPeriod1:grazingTimeearly*0.5)+(nInflorescenceCoocc_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q8 = "((nInflorescenceCoocc_surveyPeriod2:grazingTimeearly*0.5)+(nInflorescenceCoocc_surveyPeriod2:grazingTimelate*0.5)) < 0"
+hyp <- hypothesis(fit, c(Q1,Q2,Q3,Q4,Q5,Q6,Q6,Q7,Q8));hyp
+```
+
+Hypothesis Tests for class b:
+                Hypothesis Estimate Est.Error CI.Lower CI.Upper Evid.Ratio Post.Prob Star
+1 (beeTDq0_surveyPe... > 0    -0.64      0.90    -2.11     0.84       0.31      0.23     
+2 (beeTDq0_surveyPe... > 0     1.37      0.82     0.02     2.71      20.01      0.95    *
+3 (((beeTDq0_survey... > 0    -0.07      0.73    -1.25     1.13       0.86      0.46     
+4 (((beeTDq0_survey... > 0     1.33      0.69     0.21     2.47      36.31      0.97    *
+5 (nInflorescenceCo... < 0     0.33      0.48    -0.46     1.11       0.31      0.24     
+6 (nInflorescenceCo... < 0     0.52      0.46    -0.22     1.28       0.15      0.13     
+
+'CI': 90%-CI for one-sided and 95%-CI for two-sided hypotheses.
+'*': For one-sided hypotheses, the posterior probability exceeds 95%;
+for two-sided hypotheses, the value tested against lies outside the 95%-CI.
+Posterior probabilities of point hypotheses assume equal prior probabilities.
+
+
+
+
+
+## Define different alphas
+
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+alpha = 0.1
+#alpha = 0.05
+```
+
+###Bees and butterflies
+```{r}
+# Q1-Q18 same for bees and butterflies
+Q1 = "nInflorescenceCoocc_surveyPeriod1:grazingTimeearly > 0"
+Q2 = "nInflorescenceCoocc_surveyPeriod2:grazingTimeearly > 0"
+Q3 = "nInflorescenceCoocc_surveyPeriod1:grazingTimeearly < 0"
+Q4 = "nInflorescenceCoocc_surveyPeriod2:grazingTimeearly < 0"
+
+Q5 = "nInflorescenceCoocc_surveyPeriod1:grazingTimelate > 0"
+Q6 = "nInflorescenceCoocc_surveyPeriod2:grazingTimelate > 0"
+Q7 = "nInflorescenceCoocc_surveyPeriod1:grazingTimelate < 0"
+Q8 = "nInflorescenceCoocc_surveyPeriod2:grazingTimelate < 0"
+
+Q9 = "nInflorescenceCoocc_surveyPeriod1:grazingTimeearly > nInflorescenceCoocc_surveyPeriod1:grazingTimelate"
+Q10 = "nInflorescenceCoocc_surveyPeriod2:grazingTimeearly > nInflorescenceCoocc_surveyPeriod2:grazingTimelate"
+Q11 = "((nInflorescenceCoocc_surveyPeriod1:grazingTimeearly*0.5)+(nInflorescenceCoocc_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q12 = "((nInflorescenceCoocc_surveyPeriod2:grazingTimeearly*0.5)+(nInflorescenceCoocc_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q13 = "nInflorescenceCoocc_surveyPeriod1:grazingTimeearly < nInflorescenceCoocc_surveyPeriod1:grazingTimelate"
+Q14 = "nInflorescenceCoocc_surveyPeriod2:grazingTimeearly < nInflorescenceCoocc_surveyPeriod2:grazingTimelate"
+Q15 = "((nInflorescenceCoocc_surveyPeriod1:grazingTimeearly*0.5)+(nInflorescenceCoocc_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q16 = "((nInflorescenceCoocc_surveyPeriod2:grazingTimeearly*0.5)+(nInflorescenceCoocc_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q17 =  "nInflorescenceCoocc_elevationScaled > 0"
+Q18 = "nInflorescenceCoocc_elevationScaled < 0"
+
+
+Q19 = "beeTDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "beeTDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "beeTDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "beeTDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "beeTDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "beeTDq0_surveyPeriod2:grazingTimelate > 0"
+Q25= "beeTDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "beeTDq0_surveyPeriod2:grazingTimelate < 0"
+
+Q27 = "beeTDq0_surveyPeriod1:grazingTimeearly > beeTDq0_surveyPeriod1:grazingTimelate"
+Q28 = "beeTDq0_surveyPeriod2:grazingTimeearly > beeTDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((beeTDq0_surveyPeriod1:grazingTimeearly*0.5)+(beeTDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((beeTDq0_surveyPeriod2:grazingTimeearly*0.5)+(beeTDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "beeTDq0_surveyPeriod1:grazingTimeearly < beeTDq0_surveyPeriod1:grazingTimelate"
+Q32 = "beeTDq0_surveyPeriod2:grazingTimeearly < beeTDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((beeTDq0_surveyPeriod1:grazingTimeearly*0.5)+(beeTDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((beeTDq0_surveyPeriod2:grazingTimeearly*0.5)+(beeTDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "beeTDq0_elevationScaled > 0"
+Q36 = "beeTDq0_elevationScaled < 0"
+Q37 = "beeTDq0_nInflorescenceCoocc > 0"
+hypTDbee  = hypothesis(modelResultsTDVegetationManagement[[1]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+
+
+Q19 = "beePDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "beePDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "beePDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "beePDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "beePDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "beePDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "beePDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "beePDq0_surveyPeriod2:grazingTimelate < 0"
+
+Q27 = "beePDq0_surveyPeriod1:grazingTimeearly > beePDq0_surveyPeriod1:grazingTimelate"
+Q28 = "beePDq0_surveyPeriod2:grazingTimeearly > beePDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((beePDq0_surveyPeriod1:grazingTimeearly*0.5)+(beePDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((beePDq0_surveyPeriod2:grazingTimeearly*0.5)+(beePDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "beePDq0_surveyPeriod1:grazingTimeearly < beePDq0_surveyPeriod1:grazingTimelate"
+Q32 = "beePDq0_surveyPeriod2:grazingTimeearly < beePDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((beePDq0_surveyPeriod1:grazingTimeearly*0.5)+(beePDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((beePDq0_surveyPeriod2:grazingTimeearly*0.5)+(beePDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "beePDq0_elevationScaled > 0"
+Q36 = "beePDq0_elevationScaled < 0"
+Q37 = "beePDq0_nInflorescenceCoocc >0"
+hypPDbee  = hypothesis(modelResultsPDVegetationManagement[[1]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+
+
+Q19 = "beeFDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "beeFDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "beeFDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "beeFDq0_surveyPeriod2:grazingTimeearly < 0"
+
+
+Q23 = "beeFDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "beeFDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "beeFDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "beeFDq0_surveyPeriod2:grazingTimelate < 0"
+
+
+Q27 = "beeFDq0_surveyPeriod1:grazingTimeearly > beeFDq0_surveyPeriod1:grazingTimelate"
+Q28 = "beeFDq0_surveyPeriod2:grazingTimeearly > beeFDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((beeFDq0_surveyPeriod1:grazingTimeearly*0.5)+(beeFDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((beeFDq0_surveyPeriod2:grazingTimeearly*0.5)+(beeFDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "beeFDq0_surveyPeriod1:grazingTimeearly < beeFDq0_surveyPeriod1:grazingTimelate"
+Q32 = "beeFDq0_surveyPeriod2:grazingTimeearly < beeFDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((beeFDq0_surveyPeriod1:grazingTimeearly*0.5)+(beeFDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((beeFDq0_surveyPeriod2:grazingTimeearly*0.5)+(beeFDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "beeFDq0_elevationScaled > 0"
+Q36 = "beeFDq0_elevationScaled < 0"
+Q37 = "beeFDq0_nInflorescenceCoocc >0"
+hypFDbee  = hypothesis(modelResultsFDVegetationManagement[[1]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+
+
+# butterfly
+Q19 = "butterflyTDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "butterflyTDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "butterflyTDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "butterflyTDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "butterflyTDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "butterflyTDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "butterflyTDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "butterflyTDq0_surveyPeriod2:grazingTimelate < 0"
+
+Q27 = "butterflyTDq0_surveyPeriod1:grazingTimeearly > butterflyTDq0_surveyPeriod1:grazingTimelate"
+Q28 = "butterflyTDq0_surveyPeriod2:grazingTimeearly > butterflyTDq0_surveyPeriod2:grazingTimelate"
+Q29= "((butterflyTDq0_surveyPeriod1:grazingTimeearly*0.5)+(butterflyTDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((butterflyTDq0_surveyPeriod2:grazingTimeearly*0.5)+(butterflyTDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "butterflyTDq0_surveyPeriod1:grazingTimeearly < butterflyTDq0_surveyPeriod1:grazingTimelate"
+Q32 = "butterflyTDq0_surveyPeriod2:grazingTimeearly < butterflyTDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((butterflyTDq0_surveyPeriod1:grazingTimeearly*0.5)+(butterflyTDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((butterflyTDq0_surveyPeriod2:grazingTimeearly*0.5)+(butterflyTDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "butterflyTDq0_elevationScaled > 0"
+Q36 = "butterflyTDq0_elevationScaled < 0"
+Q37 = "butterflyTDq0_nInflorescenceCoocc > 0"
+hypTDbutterfly = hypothesis(modelResultsTDVegetationManagement[[2]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha) 
+
+Q19 = "butterflyPDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "butterflyPDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "butterflyPDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "butterflyPDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "butterflyPDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "butterflyPDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "butterflyPDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "butterflyPDq0_surveyPeriod2:grazingTimelate < 0"
+
+Q27 = "butterflyPDq0_surveyPeriod1:grazingTimeearly > butterflyPDq0_surveyPeriod1:grazingTimelate"
+Q28 = "butterflyPDq0_surveyPeriod2:grazingTimeearly > butterflyPDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((butterflyPDq0_surveyPeriod1:grazingTimeearly*0.5)+(butterflyPDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((butterflyPDq0_surveyPeriod2:grazingTimeearly*0.5)+(butterflyPDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "butterflyPDq0_surveyPeriod1:grazingTimeearly < butterflyPDq0_surveyPeriod1:grazingTimelate"
+Q32 = "butterflyPDq0_surveyPeriod2:grazingTimeearly < butterflyPDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((butterflyPDq0_surveyPeriod1:grazingTimeearly*0.5)+(butterflyPDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((butterflyPDq0_surveyPeriod2:grazingTimeearly*0.5)+(butterflyPDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "butterflyPDq0_elevationScaled > 0"
+Q36 = "butterflyPDq0_elevationScaled < 0"
+Q37 = "butterflyPDq0_nInflorescenceCoocc >0"
+hypPDbutterfly   = hypothesis(modelResultsPDVegetationManagement[[2]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+Q19 = "butterflyFDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "butterflyFDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "butterflyFDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "butterflyFDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "butterflyFDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "butterflyFDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "butterflyFDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "butterflyFDq0_surveyPeriod2:grazingTimelate < 0"
+
+Q27 = "butterflyFDq0_surveyPeriod1:grazingTimeearly > butterflyFDq0_surveyPeriod1:grazingTimelate"
+Q28 = "butterflyFDq0_surveyPeriod2:grazingTimeearly > butterflyFDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((butterflyFDq0_surveyPeriod1:grazingTimeearly*0.5)+(butterflyFDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((butterflyFDq0_surveyPeriod2:grazingTimeearly*0.5)+(butterflyFDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "butterflyFDq0_surveyPeriod1:grazingTimeearly < butterflyFDq0_surveyPeriod1:grazingTimelate"
+Q32 = "butterflyFDq0_surveyPeriod2:grazingTimeearly < butterflyFDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((butterflyFDq0_surveyPeriod1:grazingTimeearly*0.5)+(butterflyFDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((butterflyFDq0_surveyPeriod2:grazingTimeearly*0.5)+(butterflyFDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "butterflyFDq0_elevationScaled > 0"
+Q36 = "butterflyFDq0_elevationScaled < 0"
+Q37 = "butterflyFDq0_nInflorescenceCoocc >0"
+hypFDbutterfly   = hypothesis(modelResultsFDVegetationManagement[[2]], c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha) 
+```
+
+### Planthopper
+#### Planthopper - Plant species richness
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+Q1 = "nPlantSpecies_surveyPeriod1:grazingTimeearly > 0"
+Q2 = "nPlantSpecies_surveyPeriod2:grazingTimeearly > 0"
+Q3 = "nPlantSpecies_surveyPeriod1:grazingTimeearly < 0"
+Q4 = "nPlantSpecies_surveyPeriod2:grazingTimeearly < 0"
+
+Q5 = "nPlantSpecies_surveyPeriod1:grazingTimelate > 0"
+Q6 = "nPlantSpecies_surveyPeriod2:grazingTimelate > 0"
+Q7 = "nPlantSpecies_surveyPeriod1:grazingTimelate < 0"
+Q8 = "nPlantSpecies_surveyPeriod2:grazingTimelate < 0"
+
+Q9 = "nPlantSpecies_surveyPeriod1:grazingTimeearly > nPlantSpecies_surveyPeriod1:grazingTimelate"
+Q10 = "nPlantSpecies_surveyPeriod2:grazingTimeearly > nPlantSpecies_surveyPeriod2:grazingTimelate"
+Q11 = "((nPlantSpecies_surveyPeriod1:grazingTimeearly*0.5)+(nPlantSpecies_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q12 = "((nPlantSpecies_surveyPeriod2:grazingTimeearly*0.5)+(nPlantSpecies_surveyPeriod2:grazingTimelate*0.5)) > 0"
+
+Q13 = "nPlantSpecies_surveyPeriod1:grazingTimeearly < nPlantSpecies_surveyPeriod1:grazingTimelate"
+Q14 = "nPlantSpecies_surveyPeriod2:grazingTimeearly < nPlantSpecies_surveyPeriod2:grazingTimelate"
+Q15 = "((nPlantSpecies_surveyPeriod1:grazingTimeearly*0.5)+(nPlantSpecies_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q16 = "((nPlantSpecies_surveyPeriod2:grazingTimeearly*0.5)+(nPlantSpecies_surveyPeriod2:grazingTimelate*0.5)) < 0"
+
+Q17 =  "nPlantSpecies_elevationScaled > 0"
+Q18 = "nPlantSpecies_elevationScaled < 0"
+
+
+Q19 = "planthopperTDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "planthopperTDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "planthopperTDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "planthopperTDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "planthopperTDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "planthopperTDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "planthopperTDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "planthopperTDq0_surveyPeriod2:grazingTimelate < 0"
+
+
+Q27  = "planthopperTDq0_surveyPeriod1:grazingTimeearly > planthopperTDq0_surveyPeriod1:grazingTimelate"
+Q28 = "planthopperTDq0_surveyPeriod2:grazingTimeearly > planthopperTDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((planthopperTDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((planthopperTDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "planthopperTDq0_surveyPeriod1:grazingTimeearly < planthopperTDq0_surveyPeriod1:grazingTimelate"
+Q32 = "planthopperTDq0_surveyPeriod2:grazingTimeearly < planthopperTDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((planthopperTDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((planthopperTDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "planthopperTDq0_elevationScaled > 0"
+Q36 = "planthopperTDq0_elevationScaled < 0"
+Q37 = "planthopperTDq0_nPlantSpecies > 0"
+hypTDplanthopper = hypothesis(modelResultsTDVegetationManagement[[3]],c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+
+Q19 = "planthopperPDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "planthopperPDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "planthopperPDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "planthopperPDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "planthopperPDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "planthopperPDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "planthopperPDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "planthopperPDq0_surveyPeriod2:grazingTimelate < 0"
+
+Q27 = "planthopperPDq0_surveyPeriod1:grazingTimeearly > planthopperPDq0_surveyPeriod1:grazingTimelate"
+Q28 = "planthopperPDq0_surveyPeriod2:grazingTimeearly > planthopperPDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((planthopperPDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((planthopperPDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "planthopperPDq0_surveyPeriod1:grazingTimeearly < planthopperPDq0_surveyPeriod1:grazingTimelate"
+Q32 = "planthopperPDq0_surveyPeriod2:grazingTimeearly < planthopperPDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((planthopperPDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((planthopperPDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "planthopperPDq0_elevationScaled > 0"
+Q36 = "planthopperPDq0_elevationScaled < 0"
+Q37 = "planthopperPDq0_nPlantSpecies > 0"
+hypPDplanthopper = hypothesis(modelResultsPDVegetationManagement[[3]],c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+
+
+Q19 = "planthopperFDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "planthopperFDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "planthopperFDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "planthopperFDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "planthopperFDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "planthopperFDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "planthopperFDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "planthopperFDq0_surveyPeriod2:grazingTimelate < 0"
+
+
+Q27 = "planthopperFDq0_surveyPeriod1:grazingTimeearly > planthopperFDq0_surveyPeriod1:grazingTimelate"
+Q28 = "planthopperFDq0_surveyPeriod2:grazingTimeearly > planthopperFDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((planthopperFDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((planthopperFDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "planthopperFDq0_surveyPeriod1:grazingTimeearly < planthopperFDq0_surveyPeriod1:grazingTimelate"
+Q32 = "planthopperFDq0_surveyPeriod2:grazingTimeearly < planthopperFDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((planthopperFDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((planthopperFDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "planthopperFDq0_elevationScaled > 0"
+Q36 = "planthopperFDq0_elevationScaled < 0"
+Q37 = "planthopperFDq0_nPlantSpecies > 0"
+hypFDplanthopper = hypothesis(modelResultsFDVegetationManagement[[3]],c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+```
+
+####  Planthopper - Height
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+Q1 = "height_surveyPeriod1:grazingTimeearly > 0"
+Q2 = "height_surveyPeriod2:grazingTimeearly > 0"
+Q3 = "height_surveyPeriod1:grazingTimeearly < 0"
+Q4 = "height_surveyPeriod2:grazingTimeearly < 0"
+
+Q5 = "height_surveyPeriod1:grazingTimelate > 0"
+Q6 = "height_surveyPeriod2:grazingTimelate > 0"
+Q7 = "height_surveyPeriod1:grazingTimelate < 0"
+Q8 = "height_surveyPeriod2:grazingTimelate < 0"
+
+Q9 = "height_surveyPeriod1:grazingTimeearly > height_surveyPeriod1:grazingTimelate"
+Q10 = "height_surveyPeriod2:grazingTimeearly > height_surveyPeriod2:grazingTimelate"
+Q11 = "((height_surveyPeriod1:grazingTimeearly*0.5)+(height_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q12 = "((height_surveyPeriod2:grazingTimeearly*0.5)+(height_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q13 = "height_surveyPeriod1:grazingTimeearly < height_surveyPeriod1:grazingTimelate"
+Q14 = "height_surveyPeriod2:grazingTimeearly < height_surveyPeriod2:grazingTimelate"
+Q15 = "((height_surveyPeriod1:grazingTimeearly*0.5)+(height_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q16 = "((height_surveyPeriod2:grazingTimeearly*0.5)+(height_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q17 =  "height_elevationScaled > 0"
+Q18 = "height_elevationScaled < 0"
+
+
+Q19 = "planthopperTDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "planthopperTDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "planthopperTDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "planthopperTDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "planthopperTDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "planthopperTDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "planthopperTDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "planthopperTDq0_surveyPeriod2:grazingTimelate < 0"
+
+Q27  = "planthopperTDq0_surveyPeriod1:grazingTimeearly > planthopperTDq0_surveyPeriod1:grazingTimelate"
+Q28 = "planthopperTDq0_surveyPeriod2:grazingTimeearly > planthopperTDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((planthopperTDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((planthopperTDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "planthopperTDq0_surveyPeriod1:grazingTimeearly < planthopperTDq0_surveyPeriod1:grazingTimelate"
+Q32 = "planthopperTDq0_surveyPeriod2:grazingTimeearly < planthopperTDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((planthopperTDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((planthopperTDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "planthopperTDq0_elevationScaled > 0"
+Q36 = "planthopperTDq0_elevationScaled < 0"
+Q37 = "planthopperTDq0_height > 0"
+hypTDplanthopper2 = hypothesis(modelResultsTDVegetationManagement[[4]],c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+
+Q19 = "planthopperPDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "planthopperPDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "planthopperPDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "planthopperPDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "planthopperPDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "planthopperPDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "planthopperPDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "planthopperPDq0_surveyPeriod2:grazingTimelate < 0"
+
+Q27 = "planthopperPDq0_surveyPeriod1:grazingTimeearly > planthopperPDq0_surveyPeriod1:grazingTimelate"
+Q28 = "planthopperPDq0_surveyPeriod2:grazingTimeearly > planthopperPDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((planthopperPDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((planthopperPDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "planthopperPDq0_surveyPeriod1:grazingTimeearly < planthopperPDq0_surveyPeriod1:grazingTimelate"
+Q32 = "planthopperPDq0_surveyPeriod2:grazingTimeearly < planthopperPDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((planthopperPDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((planthopperPDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "planthopperPDq0_elevationScaled > 0"
+Q36 = "planthopperPDq0_elevationScaled < 0"
+Q37 = "planthopperPDq0_height > 0"
+hypPDplanthopper2 = hypothesis(modelResultsPDVegetationManagement[[4]],c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+
+
+Q19 = "planthopperFDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "planthopperFDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "planthopperFDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "planthopperFDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "planthopperFDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "planthopperFDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "planthopperFDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "planthopperFDq0_surveyPeriod2:grazingTimelate < 0"
+
+
+Q27 = "planthopperFDq0_surveyPeriod1:grazingTimeearly > planthopperFDq0_surveyPeriod1:grazingTimelate"
+Q28 = "planthopperFDq0_surveyPeriod2:grazingTimeearly > planthopperFDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((planthopperFDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((planthopperFDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "planthopperFDq0_surveyPeriod1:grazingTimeearly < planthopperFDq0_surveyPeriod1:grazingTimelate"
+Q32 = "planthopperFDq0_surveyPeriod2:grazingTimeearly < planthopperFDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((planthopperFDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((planthopperFDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "planthopperFDq0_elevationScaled > 0"
+Q36 = "planthopperFDq0_elevationScaled < 0"
+Q37 = "planthopperFDq0_height > 0"
+hypFDplanthopper2 = hypothesis(modelResultsFDVegetationManagement[[4]],c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+```
+
+####  Planthopper - Biomass
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+
+Q1 = "biomass_surveyPeriod1:grazingTimeearly > 0"
+Q2 = "biomass_surveyPeriod2:grazingTimeearly > 0"
+Q3 = "biomass_surveyPeriod1:grazingTimeearly < 0"
+Q4 = "biomass_surveyPeriod2:grazingTimeearly < 0"
+
+Q5 = "biomass_surveyPeriod1:grazingTimelate > 0"
+Q6 = "biomass_surveyPeriod2:grazingTimelate > 0"
+Q7 = "biomass_surveyPeriod1:grazingTimelate < 0"
+Q8 = "biomass_surveyPeriod2:grazingTimelate < 0"
+
+
+
+Q9 = "biomass_surveyPeriod1:grazingTimeearly > biomass_surveyPeriod1:grazingTimelate"
+Q10 = "biomass_surveyPeriod2:grazingTimeearly > biomass_surveyPeriod2:grazingTimelate"
+Q11 = "((biomass_surveyPeriod1:grazingTimeearly*0.5)+(biomass_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q12 = "((biomass_surveyPeriod2:grazingTimeearly*0.5)+(biomass_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q13 = "biomass_surveyPeriod1:grazingTimeearly < biomass_surveyPeriod1:grazingTimelate"
+Q14 = "biomass_surveyPeriod2:grazingTimeearly < biomass_surveyPeriod2:grazingTimelate"
+Q15 = "((biomass_surveyPeriod1:grazingTimeearly*0.5)+(biomass_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q16 = "((biomass_surveyPeriod2:grazingTimeearly*0.5)+(biomass_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q17 =  "biomass_elevationScaled > 0"
+Q18 = "biomass_elevationScaled < 0"
+
+
+Q19 = "planthopperTDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "planthopperTDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "planthopperTDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "planthopperTDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "planthopperTDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "planthopperTDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "planthopperTDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "planthopperTDq0_surveyPeriod2:grazingTimelate < 0"
+
+Q27  = "planthopperTDq0_surveyPeriod1:grazingTimeearly > planthopperTDq0_surveyPeriod1:grazingTimelate"
+Q28 = "planthopperTDq0_surveyPeriod2:grazingTimeearly > planthopperTDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((planthopperTDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((planthopperTDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "planthopperTDq0_surveyPeriod1:grazingTimeearly < planthopperTDq0_surveyPeriod1:grazingTimelate"
+Q32 = "planthopperTDq0_surveyPeriod2:grazingTimeearly < planthopperTDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((planthopperTDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((planthopperTDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperTDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "planthopperTDq0_elevationScaled > 0"
+Q36 = "planthopperTDq0_elevationScaled < 0"
+Q37 = "planthopperTDq0_biomass > 0"
+hypTDplanthopper3 = hypothesis(modelResultsTDVegetationManagement[[5]],c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+
+
+Q19 = "planthopperPDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "planthopperPDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "planthopperPDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "planthopperPDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "planthopperPDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "planthopperPDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "planthopperPDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "planthopperPDq0_surveyPeriod2:grazingTimelate < 0"
+
+Q27 = "planthopperPDq0_surveyPeriod1:grazingTimeearly > planthopperPDq0_surveyPeriod1:grazingTimelate"
+Q28 = "planthopperPDq0_surveyPeriod2:grazingTimeearly > planthopperPDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((planthopperPDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((planthopperPDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "planthopperPDq0_surveyPeriod1:grazingTimeearly < planthopperPDq0_surveyPeriod1:grazingTimelate"
+Q32 = "planthopperPDq0_surveyPeriod2:grazingTimeearly < planthopperPDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((planthopperPDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((planthopperPDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperPDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "planthopperPDq0_elevationScaled > 0"
+Q36 = "planthopperPDq0_elevationScaled < 0"
+Q37 = "planthopperPDq0_biomass > 0"
+hypPDplanthopper3 = hypothesis(modelResultsPDVegetationManagement[[5]],c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+
+Q19 = "planthopperFDq0_surveyPeriod1:grazingTimeearly > 0"
+Q20 = "planthopperFDq0_surveyPeriod2:grazingTimeearly > 0"
+Q21 = "planthopperFDq0_surveyPeriod1:grazingTimeearly < 0"
+Q22 = "planthopperFDq0_surveyPeriod2:grazingTimeearly < 0"
+
+Q23 = "planthopperFDq0_surveyPeriod1:grazingTimelate > 0"
+Q24 = "planthopperFDq0_surveyPeriod2:grazingTimelate > 0"
+Q25 = "planthopperFDq0_surveyPeriod1:grazingTimelate < 0"
+Q26 = "planthopperFDq0_surveyPeriod2:grazingTimelate < 0"
+
+
+Q27 = "planthopperFDq0_surveyPeriod1:grazingTimeearly > planthopperFDq0_surveyPeriod1:grazingTimelate"
+Q28 = "planthopperFDq0_surveyPeriod2:grazingTimeearly > planthopperFDq0_surveyPeriod2:grazingTimelate"
+Q29 = "((planthopperFDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod1:grazingTimelate*0.5)) > 0"
+Q30 = "((planthopperFDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod2:grazingTimelate*0.5)) > 0"
+Q31 = "planthopperFDq0_surveyPeriod1:grazingTimeearly < planthopperFDq0_surveyPeriod1:grazingTimelate"
+Q32 = "planthopperFDq0_surveyPeriod2:grazingTimeearly < planthopperFDq0_surveyPeriod2:grazingTimelate"
+Q33 = "((planthopperFDq0_surveyPeriod1:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod1:grazingTimelate*0.5)) < 0"
+Q34 = "((planthopperFDq0_surveyPeriod2:grazingTimeearly*0.5)+(planthopperFDq0_surveyPeriod2:grazingTimelate*0.5)) < 0"
+Q35 = "planthopperFDq0_elevationScaled > 0"
+Q36 = "planthopperFDq0_elevationScaled < 0"
+Q37 = "planthopperFDq0_biomass > 0"
+hypFDplanthopper3 = hypothesis(modelResultsFDVegetationManagement[[5]],c(Q1,Q2,Q3,Q4,Q5,Q6,Q7,Q8,Q9,Q10,
+                                                                  Q11,Q12,Q13,Q14,Q15,Q16,Q17,Q18,
+                                                                  Q19,Q20,Q21,Q22,Q23,Q24,Q25,Q26,
+                                                                  Q27,Q28,Q29,Q30,Q31,Q32,Q33,Q34,
+                                                                  Q35,Q36,Q37),alpha=alpha)
+```
+
+### Combine hypothesis
+```{r}
+nHypotheses = 37
+hypTDbee$hypothesis$diversity =rep("TD",nHypotheses)
+hypTDbee$hypothesis$group =rep("bee",nHypotheses)
+hypTDbutterfly$hypothesis$diversity =rep("TD",nHypotheses)
+hypTDbutterfly$hypothesis$group =rep("butterfly",nHypotheses)
+hypTDplanthopper$hypothesis$diversity =rep("TD",nHypotheses)
+hypTDplanthopper$hypothesis$group =rep("planthopper",nHypotheses)
+hypTDplanthopper2$hypothesis$diversity =rep("TD",nHypotheses)
+hypTDplanthopper2$hypothesis$group =rep("planthopper2",nHypotheses)
+hypTDplanthopper3$hypothesis$diversity =rep("TD",nHypotheses)
+hypTDplanthopper3$hypothesis$group =rep("planthopper3",nHypotheses)
+
+hypPDbee$hypothesis$diversity =rep("PD",nHypotheses)
+hypPDbee$hypothesis$group =rep("bee",nHypotheses)
+hypPDbutterfly$hypothesis$diversity =rep("PD",nHypotheses)
+hypPDbutterfly$hypothesis$group =rep("butterfly",nHypotheses)
+hypPDplanthopper$hypothesis$diversity =rep("PD",nHypotheses)
+hypPDplanthopper$hypothesis$group =rep("planthopper",nHypotheses)
+hypPDplanthopper2$hypothesis$diversity =rep("PD",nHypotheses)
+hypPDplanthopper2$hypothesis$group =rep("planthopper2",nHypotheses)
+hypPDplanthopper3$hypothesis$diversity =rep("PD",nHypotheses)
+hypPDplanthopper3$hypothesis$group =rep("planthopper3",nHypotheses)
+
+hypFDbee$hypothesis$diversity =rep("FD",nHypotheses)
+hypFDbee$hypothesis$group =rep("bee",nHypotheses)
+hypFDbutterfly$hypothesis$diversity =rep("FD",nHypotheses)
+hypFDbutterfly$hypothesis$group =rep("butterfly",nHypotheses)
+hypFDplanthopper$hypothesis$diversity =rep("FD",nHypotheses)
+hypFDplanthopper$hypothesis$group =rep("planthopper",nHypotheses)
+hypFDplanthopper2$hypothesis$diversity =rep("FD",nHypotheses)
+hypFDplanthopper2$hypothesis$group =rep("planthopper2",nHypotheses)
+hypFDplanthopper3$hypothesis$diversity =rep("FD",nHypotheses)
+hypFDplanthopper3$hypothesis$group =rep("planthopper3",nHypotheses)
+
+hypothesesResults = rbind(
+hypTDbee$hypothesis,
+hypTDbutterfly$hypothesis,
+hypTDplanthopper$hypothesis,
+hypTDplanthopper2$hypothesis,
+hypTDplanthopper3$hypothesis,
+
+hypPDbee$hypothesis,
+hypPDbutterfly$hypothesis,
+hypPDplanthopper$hypothesis,
+hypPDplanthopper2$hypothesis,
+hypPDplanthopper3$hypothesis,
+
+hypFDbee$hypothesis,
+hypFDbutterfly$hypothesis,
+hypFDplanthopper$hypothesis,
+hypFDplanthopper2$hypothesis,
+hypFDplanthopper3$hypothesis)
+
+
+# renaming
+hypothesesResults$model = rep(c(rep("p",18),rep("i",19)),15)
+
+
+
+hypothesesResults.0.9 = hypothesesResults # alpha = 0.1
+#hypothesesResults.0.95 = hypothesesResults # alpha = 0.05
+```
+
+
+
+```{r}
+df1 = hypothesesResults.0.9 %>% rename(alpha_0.9 = Star)
+df2 = hypothesesResults.0.95 %>% rename(alpha_0.95 = Star) %>% dplyr::select(Hypothesis,diversity,group,model,Post.Prob,alpha_0.95)
+df = merge(df1,df2,by=c("Hypothesis","diversity","group","model","Post.Prob"),all.x=T)
+
+
+df$diversity = as.factor(df$diversity)
+df$diversity <- factor(df$diversity, levels = c("TD","PD","FD"))
+
+dfN = df
+
+# renaming
+dfN$Hypothesis_fullname = df$Hypothesis
+dfN$Hypothesis[which(grepl("surveyPeriod1:grazingTimelate) > 0",dfN$Hypothesis_fullname))] = "SP1: late > 0"
+dfN$Hypothesis[which(grepl("surveyPeriod2:grazingTimelate) > 0",dfN$Hypothesis_fullname))] = "SP2: late > 0"
+dfN$Hypothesis[which(grepl("surveyPeriod1:grazingTimelate) < 0",dfN$Hypothesis_fullname))] = "SP1: late < 0"
+dfN$Hypothesis[which(grepl("surveyPeriod2:grazingTimelate) < 0",dfN$Hypothesis_fullname))] = "SP2: late < 0"
+
+dfN$Hypothesis[which(grepl("surveyPeriod1:grazingTimeearly) > 0",dfN$Hypothesis_fullname))] = "SP1: early > 0"
+dfN$Hypothesis[which(grepl("surveyPeriod2:grazingTimeearly) > 0",dfN$Hypothesis_fullname))] = "SP2: early > 0"
+dfN$Hypothesis[which(grepl("surveyPeriod1:grazingTimeearly) < 0",dfN$Hypothesis_fullname))] = "SP1: early < 0"
+dfN$Hypothesis[which(grepl("surveyPeriod2:grazingTimeearly) < 0",dfN$Hypothesis_fullname))] = "SP2: early < 0"
+
+
+dfN$Hypothesis[which(grepl("surveyPeriod1:grazingTimelate\\*0.5))) > 0",dfN$Hypothesis_fullname))] = 
+  "SP1: grazing > control"
+dfN$Hypothesis[which(grepl("surveyPeriod2:grazingTimelate\\*0.5))) > 0",dfN$Hypothesis_fullname))] = 
+  "SP2: grazing > control"
+dfN$Hypothesis[which(grepl("surveyPeriod1:grazingTimelate\\*0.5))) < 0",dfN$Hypothesis_fullname))] = 
+  "SP1: grazing < control"
+dfN$Hypothesis[which(grepl("surveyPeriod2:grazingTimelate\\*0.5))) < 0",dfN$Hypothesis_fullname))] = 
+  "SP2: grazing < control"
+
+dfN$Hypothesis[which(grepl("elevationScaled) > 0",dfN$Hypothesis_fullname))] = "elevation > 0"
+dfN$Hypothesis[which(grepl("elevationScaled) < 0",dfN$Hypothesis_fullname))] = "elevation < 0"
+
+dfN$Hypothesis[which(grepl("nInflorescenceCoocc)",dfN$Hypothesis_fullname))] = "nInflorescences > 0"
+dfN$Hypothesis[which(grepl("nPlantSpecies)",dfN$Hypothesis_fullname))]       = "nPlantSpecies > 0"
+dfN$Hypothesis[which(grepl("height)",dfN$Hypothesis_fullname))]              = "height > 0"
+dfN$Hypothesis[which(grepl("biomass)",dfN$Hypothesis_fullname))]             = "biomass > 0"
+
+
+
+dfN$Hypothesis[which(grepl("surveyPeriod1:grazingTimeearly)-",dfN$Hypothesis_fullname) & 
+                       grepl("surveyPeriod1:grazingTimelate) > 0",dfN$Hypothesis_fullname),dfN$Hypothesis_fullname)]= "SP1: early > late"
+
+dfN$Hypothesis[which(grepl("surveyPeriod2:grazingTimeearly)-",dfN$Hypothesis_fullname) & 
+                       grepl("surveyPeriod2:grazingTimelate) > 0",dfN$Hypothesis_fullname),dfN$Hypothesis_fullname)]= "SP2: early > late"
+
+dfN$Hypothesis[which(grepl("surveyPeriod1:grazingTimeearly)-",dfN$Hypothesis_fullname) & 
+                       grepl("surveyPeriod1:grazingTimelate) < 0",dfN$Hypothesis_fullname),dfN$Hypothesis_fullname)]= "SP1: early < late"
+
+dfN$Hypothesis[which(grepl("surveyPeriod2:grazingTimeearly)-",dfN$Hypothesis_fullname) & 
+                       grepl("surveyPeriod2:grazingTimelate) < 0",dfN$Hypothesis_fullname),dfN$Hypothesis_fullname)]= "SP2: early < late"
+
+
+
+
+dfN %<>% relocate(Hypothesis_fullname, .after = last_col())
+hypothesesResults = dfN %>% dplyr::arrange(diversity,group,model,Hypothesis)
+
+
+```
+
+
+# Save model results
+```{r}
+openxlsx::write.xlsx(hypothesesResults,paste("results/",gsub("-"
+                                                             ,".",Sys.Date()),"-Q2_Hypotheses_SEM.xlsx",sep=""))
+
+save(hypothesesResults,
+     file="results/modelResultsSEM_hypotheses.RData")
+```
+

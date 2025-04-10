@@ -886,3 +886,26 @@ arrange.vars <- function(data, vars){
 }
 
 # usage: arrange.vars(table, c("Out"=2))
+
+
+
+# Function for the calculation of path coefficients
+
+calculate_standardized_coefficients <- function(model, data, outcome_var,select_var) {
+  draws <- posterior::as_draws_df(model)
+  outcome_sd <- sd(na.omit(data[[outcome_var]]))
+  standardized_coefficients <- draws %>%
+    dplyr::select(starts_with(select_var)) %>%
+    dplyr::mutate(across(everything(), ~ .  / outcome_sd))
+  return(standardized_coefficients)
+}
+
+# Funktion zur Kombination der Tabellen im Wide-Format
+combine_tables_wide <- function(insect_model, plant_model) {
+  insect_summary <- posterior::summarize_draws(insect_model)
+  plant_summary <- posterior::summarize_draws(plant_model)
+  insect_summary$Model <- "Insect"
+  plant_summary$Model <- "Plant"
+  combined <- bind_rows(insect_summary, plant_summary)
+  return(combined)
+}

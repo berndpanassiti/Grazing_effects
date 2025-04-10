@@ -1,0 +1,189 @@
+---
+title: "Calculation of effect sizes"
+author: "Bernd Panassiti"
+date: 'created: 07.06.2023, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  pdf_document: default
+  html_document: default
+editor_options: 
+  chunk_output_type: console
+---
+
+
+
+```{r setup, include=FALSE}
+library(knitr)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+opts_chunk$set(fig.align='center',                # aligns all figures
+                echo=TRUE,                        # shows r-code
+                message=FALSE,                    # suppresses library outputs
+                warnings=FALSE,                   # suppresses library outputs
+                tidy=TRUE,  # prevents the source code from running off a pdf page
+                dev='pdf')                        # pdf device
+```
+
+
+
+
+# Loading of packages and data
+```{r loading_data, include=FALSE}
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load(tidyverse,magrittr,caret,ggplot2,DHARMa,broom.mixed,
+       posterior,ggdist,tidybayes,pryr,bayesplot,ggpubr,grid,
+       gridExtra,ggdag,dagitty,
+       emmeans,broom, broom.mixed,
+       posterior,brms,bayesplot,ggpubr)
+
+source("r-code/00_functions.R")
+
+load("results/modelResultsSEM.RData")
+```
+
+
+# Introduction
+This script calculates standardized effect sizes (path coefficients) for taxonomic (TD), phylogenetic (PD) and functional (FD) diversity of wildbess, butterflies and leafhoppers.
+
+This script uses to functions defined in the script "00_function.R".
+
+# Path coefficient calculations
+## TD
+Models with taxonomic diversity as response
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+
+model= modelResultsTDVegetationManagement
+
+
+# calculate standarized coefficients for each model
+standardized_coefficients_list <- list(
+  bee.TD.q0 = list(
+    insect_model = calculate_standardized_coefficients(model$bee.TD.q0, model_data, 
+                                                       "beeTDq0","b_beeTDq0"),
+    plant_model = calculate_standardized_coefficients(model$bee.TD.q0, model_data,
+                                                      "nInflorescenceCoocc","b_nInflorescenceCoocc")
+  ),
+  butterfly.TD.q0 = list(
+    insect_model = calculate_standardized_coefficients(model$butterfly.TD.q0, model_data, 
+                                                       "butterflyTDq0","b_butterflyTDq0"),
+    plant_model = calculate_standardized_coefficients(model$butterfly.TD.q0, model_data,
+                                                      "nInflorescenceCoocc","b_nInflorescenceCoocc")
+  ),
+
+  planthopper2.TD.q0 = list(
+    insect_model = calculate_standardized_coefficients(model$planthopper2.TD.q0, model_data,
+                                                       "planthopperTDq0","b_planthopperTDq0"),
+    plant_model = calculate_standardized_coefficients(model$planthopper2.TD.q0, model_data, 
+                                                      "height","b_height")
+  )
+)
+
+# combine tables for each model in wide format
+combined_tables_TD <- lapply(standardized_coefficients_list, function(x) combine_tables_wide(x$insect_model, x$plant_model))
+
+```
+
+
+## PD
+Models with taxonomic diversity as response
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+
+model= modelResultsPDVegetationManagement
+
+
+# calculate standarized coefficients for each model
+standardized_coefficients_list <- list(
+  bee.PD.q0 = list(
+    insect_model = calculate_standardized_coefficients(model$bee.PD.q0, model_data, 
+                                                       "beePDq0","b_beePDq0"),
+    plant_model = calculate_standardized_coefficients(model$bee.PD.q0, model_data,
+                                                      "nInflorescenceCoocc","b_nInflorescenceCoocc")
+  ),
+  butterfly.PD.q0 = list(
+    insect_model = calculate_standardized_coefficients(model$butterfly.PD.q0, model_data, 
+                                                       "butterflyPDq0","b_butterflyPDq0"),
+    plant_model = calculate_standardized_coefficients(model$butterfly.PD.q0, model_data,
+                                                      "nInflorescenceCoocc","b_nInflorescenceCoocc")
+  ),
+
+  planthopper2.PD.q0 = list(
+    insect_model = calculate_standardized_coefficients(model$planthopper2.PD.q0, model_data,
+                                                       "planthopperPDq0","b_planthopperPDq0"),
+    plant_model = calculate_standardized_coefficients(model$planthopper2.PD.q0, model_data, 
+                                                      "height","b_height")
+  )
+)
+
+# combine tables for each model in wide format
+combined_tables_PD <- lapply(standardized_coefficients_list, function(x) combine_tables_wide(x$insect_model, x$plant_model))
+
+```
+
+
+## FD
+Models with taxonomic diversity as response
+```{r}
+rm(.Random.seed, envir=globalenv())
+set.seed(2023)
+
+
+model= modelResultsFDVegetationManagement
+
+
+# calculate standarized coefficients for each model
+standardized_coefficients_list <- list(
+  bee.FD.q0 = list(
+    insect_model = calculate_standardized_coefficients(model$bee.FD.q0, model_data, 
+                                                       "beeFDq0","b_beeFDq0"),
+    plant_model = calculate_standardized_coefficients(model$bee.FD.q0, model_data,
+                                                      "nInflorescenceCoocc","b_nInflorescenceCoocc")
+  ),
+  butterfly.FD.q0 = list(
+    insect_model = calculate_standardized_coefficients(model$butterfly.FD.q0, model_data, 
+                                                       "butterflyFDq0","b_butterflyFDq0"),
+    plant_model = calculate_standardized_coefficients(model$butterfly.FD.q0, model_data,
+                                                      "nInflorescenceCoocc","b_nInflorescenceCoocc")
+  ),
+
+  planthopper2.FD.q0 = list(
+    insect_model = calculate_standardized_coefficients(model$planthopper2.FD.q0, model_data,
+                                                       "planthopperFDq0","b_planthopperFDq0"),
+    plant_model = calculate_standardized_coefficients(model$planthopper2.FD.q0, model_data, 
+                                                      "height","b_height")
+  )
+)
+
+# combine tables for each model in wide format
+combined_tables_FD <- lapply(standardized_coefficients_list, function(x) combine_tables_wide(x$insect_model, x$plant_model))
+
+```
+
+```{r}
+# combine lists
+combined_list <- unlist(list(combined_tables_TD, combined_tables_PD, combined_tables_FD), recursive = FALSE)
+
+# convert to a single dataframe
+combined_df <- dplyr::bind_rows(combined_list, .id = "TableName")
+
+# re-order columns
+modelResultsStandardizedCoefficients<- combined_df %>%
+  select(TableName, Model, variable, everything())
+```
+
+
+
+# Save model results
+```{r}
+openxlsx::write.xlsx(modelResultsStandardizedCoefficients,paste("results/",gsub("-"
+                                                             ,".",Sys.Date()),"-Q3_modelResultsStandardizedCoefficients.xlsx",sep=""))
+
+save(modelResultsStandardizedCoefficients,
+     file="results/modelResultsSEM_StandardizedCoefficients.RData")
+```
+

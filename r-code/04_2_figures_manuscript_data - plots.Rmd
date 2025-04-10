@@ -1,0 +1,275 @@
+---
+title: "Creation of plots for manuscript"
+author: "Bernd Panassiti"
+date: 'created: 06.04.2025, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  html_document: default
+  pdf_document: default
+editor_options: 
+  
+  
+  chunk_output_type: console
+  header-includes:
+    \AtBeginDocument{\let\maketitle\relax}
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message = FALSE)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+options(tibble.print_max = 200, tibble.print_min = 20)
+```
+
+```{r load_packages_data, include=FALSE}
+set.seed(2022)
+#Install/load pacman
+if(!require(pacman)){install.packages("pacman");require(pacman)}
+#Install packages
+p_load(ggplot2,tidyverse,gridExtra)
+
+source("r-code/00_functions.R")
+
+load("data/dataFigures.RData")
+```
+
+# Main manuscript
+## Fig.1
+Figure 1 (study area) is created in QGIS.
+
+## Fig.2
+
+```{r}
+# Management Plot
+create_plotManagement <- function(data) {
+ ggplot(data, aes(x = grazingTime, y = value, fill = type, colour = type)) +
+ xlab("") + ylab("Change in %") +
+ facet_grid(. ~ surveyPeriod) +
+ geom_hline(yintercept = 0, lty = 2, lwd = 1, aes(colour = "hline")) +
+ geom_errorbar(aes(ymin = se_low, ymax = se_high),
+ lwd = 1, width = 0, position = position_dodge(width = 0.4)) +
+ geom_point(size = 3, position = position_dodge(width = 0.4)) +
+ guides(colour = guide_legend(title = "Diversity type"), fill = "none") +
+ theme(axis.title = element_text(size = 18),
+ axis.line = element_line(colour = "black"),
+ axis.ticks = element_line(),
+ axis.text = element_text(size = 18, colour = "black"),
+ #panel.border = element_blank(),
+ panel.background = element_blank(),
+ panel.grid.major = element_line(colour = "grey80"),
+ panel.border = element_rect(colour = "black", fill = NA, size = 1),
+ title = element_text(size = 22),
+ legend.text = element_text(size = 18),
+ strip.text = element_text(size = 18)) +
+ scale_fill_manual(name = "Treatments: ",
+ values = rev(ggsci::pal_jco("default")(3))) +
+ scale_colour_manual(name = "Diversity type",
+ values = c(rev(ggsci::pal_jco("default")(3))))
+}
+
+# apply function:
+beePlotManagement        <- create_plotManagement(dataFig2$percentChangeBeeSRManagement)
+butterflyPlotManagement  <- create_plotManagement(dataFig2$percentChangeButterflySRManagement)
+leafhopperPlotManagement <- create_plotManagement(dataFig2$percentChangeLeafhopperSRManagement)
+
+```
+
+
+```{r}
+# Vegetation
+create_plotVegetation <- function(data) {
+  ggplot(data, aes(x = predictor,y = value,fill = type))+
+  xlab("") + ylab("Change in %") +
+  facet_grid(.~surveyPeriod) +
+  geom_hline(yintercept=0, lty=2, lwd=1, colour="black") +
+  geom_errorbar(aes(ymin=se_low,
+                    ymax=se_high,
+                    colour=type),
+                lwd=1,width=0,
+                position = position_dodge(width=0.5))+
+  geom_point(size=3, aes(colour=type),
+             position = position_dodge(width=0.5)) +
+  guides(colour=guide_legend(title="Diversity type:"),fill="none")+
+  theme(axis.title = element_text(size=18),  
+        axis.line = element_line(colour="black"),
+        axis.ticks = element_line(),
+        axis.text = element_text(size = 18, colour="black"),
+        panel.background = element_blank(),
+        panel.grid.major = element_line(colour = "grey80"),
+        panel.border = element_rect(colour = "black", fill = NA, size = 1),
+        title = element_text(size=22),
+        legend.text=element_text(size=18),
+        strip.text = element_text(size=18),
+        legend.position="bottom") +
+  scale_colour_manual(name = "Diversity type",
+        values = c(rev(ggsci::pal_jco("default")(3))))}
+
+
+# apply function:
+beePlotVegetation        <- create_plotVegetation(dataFig2$percentChangeBeeSRVegetation)
+butterflyPlotVegetation  <- create_plotVegetation(dataFig2$percentChangeButterflySRVegetation)
+leafhopperPlotVegetation <- create_plotVegetation(dataFig2$percentChangeLeafhopperSRVegetation)
+```
+
+
+```{r}
+# Combine vegetation & management plots
+hT = 0.5; vT = 5
+
+g1 = beePlotManagement +ylim(-90,70)+
+  #ggtitle("Wild bees")+
+  theme(plot.title = element_text(hjust = hT, vjust = vT),
+        plot.margin = margin(1,0,0,0, 'cm'))
+  
+g2 = butterflyPlotManagement + ylim(-60,150) +
+ # ggtitle("Butterflies")+
+    theme(plot.title = element_text(hjust = hT, vjust = vT),
+          plot.margin = margin(0.5,0,0,0, 'cm'))
+
+g3 = leafhopperPlotManagement + ylim(-50,30)+   
+  #ggtitle("Leafhoppers")+
+    theme(plot.title = element_text(hjust = hT, vjust = vT),
+          plot.margin = margin(0.5,0,0,0, 'cm'))
+
+g4 = beePlotVegetation +ylim(-3,11)  +ylab("")+
+ggtitle("")+
+    theme(plot.title = element_text(hjust = hT, vjust = vT),
+          plot.margin = margin(1,0,0,0.9, 'cm'))
+
+g5 = butterflyPlotVegetation + ylim(-7,4) +ylab("")+
+ggtitle("")+
+    theme(plot.title = element_text(hjust = hT, vjust = vT),
+          plot.margin = margin(0.5,0,0,0, 'cm'))
+
+g6 = leafhopperPlotVegetation+ ylim(-1,1.5)+  ylab("")+
+ggtitle("")+
+    theme(plot.title = element_text(hjust = hT, vjust = vT),
+          plot.margin = margin(0.5,0,0,0, 'cm'))
+
+
+ggpubr::ggarrange(g1, g4,
+                  g2, g5, 
+                  g3,g6,
+                  ncol=2,
+                  nrow=3,
+              common.legend = TRUE, 
+              legend="bottom",
+              align = "h",
+              #heights = c(0.5, 1),
+              widths = c(1, 0.8),
+  #labels = "auto", # labels for each plot: a, b, etc.
+  font.label = list(size = 25))+
+  theme(plot.margin = margin(0.1,0.1,0.1,0.1, "cm")) 
+
+# save with the following settings:
+# portrait
+# width: 1000,  10in
+# height:1100,  11in
+```
+
+
+
+## Fig.3
+Figure 3 (DAG, plot of SEM results) is created using Adobe Illustrator.
+
+## Fig.4
+```{r}
+dfLines = dataFig4 %>%dplyr::filter(Method!="Observed")
+dfPoints = dataFig4%>%dplyr::filter(Method=="Observed")
+
+# create plot
+Fig4 = ggplot(dataFig4, aes(x=SC,ymin=low,ymax=high,fill=treatment))+
+  ggh4x::facet_grid2(type~group,scales = "free_y", independent = "y")+
+  labs(x="Sample coverage",y="Species-richness based estimate")+
+  geom_ribbon(alpha=.5)+
+  geom_line(data=dfLines,aes(x=SC,y=estimate,color=treatment,
+                             linetype=Method),size=1)+
+  scale_linetype_manual(values=c( "dotted","solid")) +
+  geom_point(data = dfPoints,aes(x=SC,y=estimate,shape = treatment,
+                                 fill = treatment), 
+             color="black",size=5,stroke = 0.2) +
+  scale_shape_manual(values = c(21,22,24)) +
+  scale_fill_manual(name = "treatment",
+        values = c(rev(ggsci::pal_jco("default")(3))))+
+  mytheme + theme(
+  legend.text = element_text(size=18),
+  panel.background = element_blank(),
+  panel.grid.major = element_line(colour = "grey80"),
+  panel.border = element_rect(colour = "black", fill = NA, size = 1),
+  strip.background = element_blank(),
+  strip.placement = "outside",
+  legend.position="bottom",
+  legend.title=element_blank(),
+  strip.text = element_text(size = 20),
+  panel.spacing.x = unit(3, "lines"),
+  panel.spacing.y = unit(3, "lines"));Fig4
+
+# save with the following settings:
+# portrait
+# width: 900,  9in
+# height:900,  9in
+```
+
+
+# Appendix
+## Fig.S1
+```{r}
+FigS1=dataFigS1 %>% 
+ggplot(aes(y = value, x = Label,fill=grazing_time))+
+  geom_boxplot(position=position_dodge(0.9))+
+   facet_grid(survey_period~groupLabel,
+   #ggh4x::facet_grid2(survey_period~groupLabel,
+                      scales = "free",
+                      labeller = label_parsed)+
+  scale_y_continuous(limits = c(0, 170))+
+  ylab("")+
+  scale_x_discrete("")+
+  scale_fill_manual(name = "Treatments: ",
+                      values = rev(ggsci::pal_jco("default")(3)))+
+  theme_bw()+
+  #theme_clean()+
+  theme(strip.text.y.left = element_text(angle = 0),
+        strip.text = element_text(size = 12),
+        axis.text = element_text(size =12),
+        legend.position="bottom")+
+  geom_point(stat = 'summary', 
+        fun = 'mean',
+        col="black",
+        size=4,
+        position=position_dodge(width = 0.9))+
+  geom_point(stat = 'summary', 
+        fun = 'mean',
+        col="red",
+        size=3,
+        position=position_dodge(width = 0.9));FigS1
+```
+
+
+## Fig.S2
+```{r}
+FigS2=dataFigS2 %>%
+ggplot(aes(y = estimate, x = diversityType,fill=grazingTime))+
+  geom_boxplot(position=position_dodge(0.9))+
+   ggh4x::facet_grid2(survey_period~groupLabel,
+                      scales = "free_x",
+           labeller = label_parsed)+
+  theme_bw()+theme_clean()+
+  scale_y_continuous("")+
+  scale_x_discrete("")+
+  scale_fill_manual(name = "Treatments: ",
+                  values = rev(ggsci::pal_jco("default")(3))) + 
+  theme(strip.text.y.left = element_text(angle = 0),
+        legend.position="bottom",
+        legend.margin=margin(c(-20,5,5,5)))+
+    geom_point(stat = 'summary', 
+        fun = 'mean',
+        col="black",
+        size=4,
+        position=position_dodge(width = 0.9))+
+  geom_point(stat = 'summary', 
+        fun = 'mean',
+        col="red",
+        size=3,
+        position=position_dodge(width = 0.9));FigS2
+```
+

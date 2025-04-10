@@ -1,0 +1,36 @@
+---
+title: "Compilation of data used for plots for manuscript"
+author: "Bernd Panassiti"
+date: 'created: 06.04.2025, last modified: `r format(Sys.Date(), format="%d.%m.%Y")`'
+output:
+  html_document: default
+  pdf_document: default
+editor_options: 
+  
+  
+  chunk_output_type: console
+  header-includes:
+    \AtBeginDocument{\let\maketitle\relax}
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE,warning = FALSE,message = FALSE)
+opts_knit$set(root.dir='../')                     # definining working directory; or normalizePath('../')
+options(tibble.print_max = 200, tibble.print_min = 20)
+```
+
+```{r load_packages_data, include=FALSE}
+
+load("data/dataFigures_1_DescriptiveAnalyses.RData") # descriptive plots
+load("data/dataFigures_2_GLMM_percent_change.RData")
+load("results/iNext.link-Plots.RData") # network analyses
+```
+
+```{r}
+save(dataFig2,dataFig4,
+     dataFigS1,dataFigS2,
+     file="data/dataFigures.RData")
+```
+

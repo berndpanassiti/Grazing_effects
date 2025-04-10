@@ -290,7 +290,7 @@ ggcorrplot::ggcorrplot(dfCor,type = "upper",
 ```{r}
 beeDiversity$group = "bee"
 butterflyDiversity$group = "butterfly"
-planthopperDiversity$group = "planthopper"
+planthopperDiversity$group = "leafhopper"
 
 df= bind_rows(beeDiversity,butterflyDiversity,planthopperDiversity)
 
@@ -301,7 +301,7 @@ df$diversityType <- factor(df$diversityType, levels = c("TD", "PD", "FD"))
 ```{r}
 groupLabel = c(
 expression(paste("Wild ","bees")),
-"Butterflies","Planthoppers"
+"Butterflies","Leafhoppers"
 )
 
 dfPlot <- df %>% mutate(groupLabel= factor(group,  labels = groupLabel))
@@ -322,9 +322,9 @@ dfPlot$Label[which(dfPlot$diversityType=="FD" &  dfPlot$group %in% c("bee","butt
 
 
 ## control
-dfPlot$Label[which(dfPlot$diversityType=="TD" & dfPlot$group =="planthopper")] = "TD\n(N=16)"
-dfPlot$Label[which(dfPlot$diversityType=="PD" & dfPlot$group =="planthopper")] = "PD\n(N=16)"
-dfPlot$Label[which(dfPlot$diversityType=="FD" & dfPlot$group =="planthopper")]= "FD\n(N=16)"
+dfPlot$Label[which(dfPlot$diversityType=="TD" & dfPlot$group =="leafhopper")] = "TD\n(N=16)"
+dfPlot$Label[which(dfPlot$diversityType=="PD" & dfPlot$group =="leafhopper")] = "PD\n(N=16)"
+dfPlot$Label[which(dfPlot$diversityType=="FD" & dfPlot$group =="leafhopper")]= "FD\n(N=16)"
 
 
 dfPlot$Label <- factor(dfPlot$Label, levels = c("TD\n(N=26|20|22)","PD\n(N=26|20|22)", "FD\n(N=26|20|22)","TD\n(N=16)","PD\n(N=16)" ,"FD\n(N=16)"))
@@ -353,7 +353,7 @@ ggplot(aes(y = estimate, x = Label,fill=grazingTime))+
 ```{r}
 groupLabel = c(
 expression(paste("Wild ","bees")),
-"Butterflies","Planthoppers"
+"Butterflies","Leafhoppers"
 )
 
 dfPlot <- df %>% mutate(groupLabel= factor(group,  labels = groupLabel))
@@ -367,8 +367,20 @@ xlabs <- paste(levels(dfPlot$diversityType),"\n(N=",table(dfPlot$diversityType),
 dfPlot %>% group_by(survey_period,group,diversityType,grazingTime)%>%dplyr::summarize(n())
 dfPlot$Label = as.character(dfPlot$diversityType)
 
+groupLabel2 <- c(expression('summer~onset'),
+                 expression('summer~peak'))
 
-plotInsects=dfPlot %>%
+
+dfPlot$survey_period = as.factor(dfPlot$survey_period)
+levels(dfPlot$survey_period)[levels(dfPlot$survey_period)=="1"] <- groupLabel2[1]
+levels(dfPlot$survey_period)[levels(dfPlot$survey_period)=="2"] <- groupLabel2[2]
+
+
+
+
+
+dataFigS2 = dfPlot
+FigS2=dfPlot %>%
 ggplot(aes(y = estimate, x = diversityType,fill=grazingTime))+
   geom_boxplot(position=position_dodge(0.9))+
    ggh4x::facet_grid2(survey_period~groupLabel,
@@ -383,7 +395,7 @@ ggplot(aes(y = estimate, x = diversityType,fill=grazingTime))+
         legend.position="bottom",
          legend.margin=margin(c(-20,5,5,5)))+
   geom_point(stat = 'summary', fun = 'mean',col="red",
-             position=position_dodge(width = 0.9));plotInsects
+             position=position_dodge(width = 0.9));FigS2
 ```
 
 
@@ -480,7 +492,7 @@ ggpubr::ggarrange(plotVeg1,ggplot() + theme_void(), plotVeg2, ncol=3, nrow=1, co
 
 
 ### Test for differences
-#### Inflorescences in mid/late summer
+#### Inflorescences in peak summer
 ```{r}
 dfPlot2 =  dfPlot %>% 
   dplyr::filter(variable %in% c("nInflorescenceCoocc")) %>%
@@ -600,6 +612,10 @@ df_aov_PostHoc <- dfPlot %>%
 
 lapply(seq_along(df_aov_PostHoc$aov_results), function(i) df_aov_PostHoc$aov_results[[i]])
 ```
+
+Annova showed only sig. differences for inflorescences and sward height in summer peak
+
+
 [[1]]
   Tukey multiple comparisons of means
     95% family-wise confidence level
@@ -633,15 +649,17 @@ late-early     -2.13181 -27.40752 23.1439021 0.9754220
 
 ## Vegetation plot - 2 Survey periods
 ```{r}
-tmp = veg %>% dplyr::select(-treatment,-nSpecies,
-                            -coverGrass,-coverHerbs)%>%
+tmp = veg %>% dplyr::select(-treatment)%>%
   dplyr::mutate(nInflorescenceCoocc=nInflorescenceCoocc/10)
 dfVeg <- reshape::melt(tmp, id=c("site_id","year","survey_period","grazing_time"))
 dfVeg = na.omit(dfVeg)
 
 groupLabel = c(
-expression(paste(atop('Number of', 'infloresences'))),
-expression(paste(atop('Sward','height (cm)'))))
+  expression(paste(atop('Species', 'richness'))),
+  expression(paste(atop('Cover of', 'grasses (%)'))),
+  expression(paste(atop('Number of', 'herbs (%)'))),
+  expression(paste(atop('Number of', 'infloresences'))),
+  expression(paste(atop('Sward','height (cm)'))))
 
 dfPlot <- dfVeg %>% 
   mutate(groupLabel     = factor(variable,  labels = groupLabel))
@@ -672,16 +690,16 @@ dfPlot$Label[which(dfPlot$grazing_time=="late"    &  dfPlot$variable =="height"&
 
 ### Create plot
 ```{r}
-groupLabel2 <- c(expression('early~summer'),
-                                  expression('mid/late~summer'))
+groupLabel2 <- c(expression('summer~onset'),
+                 expression('summer~peak'))
 
 dfPlot <- dfPlot %>% 
   mutate(survey_period     = factor(survey_period,  labels = groupLabel2))
 
 
 
-
-plotVeg=dfPlot %>% 
+dataFigS1 = dfPlot
+FigS1=dataFigS1 %>% 
 ggplot(aes(y = value, x = Label,fill=grazing_time))+
   geom_boxplot(position=position_dodge(0.9))+
    facet_grid(survey_period~groupLabel,
@@ -699,5 +717,12 @@ ggplot(aes(y = value, x = Label,fill=grazing_time))+
         strip.text = element_text(size = 12),
         axis.text = element_text(size =12),
         legend.position="bottom")+
-  geom_point(stat = 'summary', fun = 'mean',col="red");plotVeg
+  geom_point(stat = 'summary', fun = 'mean',col="red");FigS1
 ```
+
+
+```{r}
+save(dataFigS1,dataFigS2,
+     file="data/dataFigures_1_DescriptiveAnalyses.RData")
+```
+

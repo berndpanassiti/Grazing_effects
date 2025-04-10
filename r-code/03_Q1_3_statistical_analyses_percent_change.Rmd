@@ -126,31 +126,10 @@ m[which(m$type==i & m$surveyPeriod == j &
 }
 }
 
-m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Early summer", "2"="Mid/late summer"))
+m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Summer onset", "2"="Summer peak"))
 m$type = as.factor(m$type)
 m$type <- factor(m$type, levels = c("TD", "PD", "FD"))
 levels(m$type) <- c("Taxonomic", "Phylogenetic","Functional")
-
-beePlotManagement = ggplot(m, aes(x = grazingTime,y = value,fill = type))+
-  xlab("") + ylab("Change in %") +
-  facet_grid(.~surveyPeriod) +
-  geom_hline(yintercept=0, lty=2, lwd=1, colour="black") +
-  geom_errorbar(aes(ymin=se_low,
-                    ymax=se_high,
-                    colour=type),
-                lwd=1,width=0,
-                position = position_dodge(width=0.2))+
-  geom_point(size=3, aes(colour=type),
-             position = position_dodge(width=0.2)) +
-  guides(colour=guide_legend(title="Diversity type"),fill="none")+
-  theme(axis.title = element_text(size=18),  
-        axis.line = element_line(colour="black"),
-        axis.ticks = element_line(),
-        axis.text = element_text(size = 18, colour="black"),
-        panel.border = element_blank(),
-        title = element_text(size=22),
-        legend.text=element_text(size=18),
-        strip.text = element_text(size=18));beePlotManagement
 
 percentChangeBeeSRManagement = m
 ```
@@ -230,37 +209,16 @@ m[which(m$type==i & m$surveyPeriod == j &
 }
 }
 
-m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Early summer", "2"="Mid/late summer"))
+m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Summer onset", "2"="Summer peak"))
 m$type = as.factor(m$type)
 m$type <- factor(m$type, levels = c("TD", "PD", "FD"))
 levels(m$type) <- c("Taxonomic", "Phylogenetic","Functional")
-
-butterflyPlotManagement = ggplot(m, aes(x = grazingTime,y = value,fill = type))+
-  xlab("") + ylab("Change in %") +
-  facet_grid(.~surveyPeriod) +
-  geom_hline(yintercept=0, lty=2, lwd=1, colour="black") +
-  geom_errorbar(aes(ymin=se_low,
-                    ymax=se_high,
-                    colour=type),
-                lwd=1,width=0,
-                position = position_dodge(width=0.2))+
-  geom_point(size=3, aes(colour=type),
-             position = position_dodge(width=0.2)) +
-  guides(colour=guide_legend(title="Diversity type"),fill="none")+
-  theme(axis.title = element_text(size=18),  
-        axis.line = element_line(colour="black"),
-        axis.ticks = element_line(),
-        axis.text = element_text(size = 18, colour="black"),
-        panel.border = element_blank(),
-        title = element_text(size=22),
-        legend.text=element_text(size=18),
-        strip.text = element_text(size=18));butterflyPlotManagement
 
 percentChangeButterflySRManagement = m
 ```
 
 
-##### Management plot planthopper
+##### Management plot leafhopper
 ```{r}
 # Output the conditional effects.
 fit.TD = modelResultsTDManagement[[3]]
@@ -334,62 +292,24 @@ m[which(m$type==i & m$surveyPeriod == j &
 }
 }
 
-m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Early summer", "2"="Mid/late summer"))
+m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Summer onset", "2"="Summer peak"))
 m$type = as.factor(m$type)
 m$type <- factor(m$type, levels = c("TD", "PD", "FD"))
 levels(m$type) <- c("Taxonomic", "Phylogenetic","Functional")
 
-planthopperPlotManagement = ggplot(m, aes(x = grazingTime,y = value,fill = type))+
-  xlab("") + ylab("Change in %") +
-  facet_grid(.~surveyPeriod) +
-  geom_hline(yintercept=0, lty=2, lwd=1, colour="black") +
-  geom_errorbar(aes(ymin=se_low,
-                    ymax=se_high,
-                    colour=type),
-                lwd=1,width=0,
-                position = position_dodge(width=0.2))+
-  geom_point(size=3, aes(colour=type),
-             position = position_dodge(width=0.2)) +
-  guides(colour=guide_legend(title="Diversity type"),fill="none")+
-  theme(axis.title = element_text(size=18),  
-        axis.line = element_line(colour="black"),
-        axis.ticks = element_line(),
-        axis.text = element_text(size = 18, colour="black"),
-        panel.border = element_blank(),
-        title = element_text(size=22),
-        legend.text=element_text(size=18),
-        strip.text = element_text(size=18));planthopperPlotManagement
 
-percentChangePlanthopperSRManagement = m
-```
-
-##### Combine management plots
-```{r}
-g1 = beePlotManagement +ylim(-90,70) + 
-  ggtitle("Wild bees")
-g2 = butterflyPlotManagement + ylim(-60,150) +  ylab("") + 
-  ggtitle("Butterflies")
-g3 = planthopperPlotManagement + ylim(-50,30)+  ylab("") + 
-  ggtitle("Planthoppers")
-
-gNULL = ggplot() + theme_void()
-
-ggpubr::ggarrange(g1, gNULL, g2, gNULL,g3,
-                  ncol=5,
-                  common.legend = TRUE, legend="bottom",
-                  widths = c(1, 0.00001, 1, 0.00001, 1),
-  labels = c("(A)","" ,"(B)","", "(C)"))
+percentChangeLeafhopperSRManagement = m
 ```
 
 ##### Prepare for Excel export and number of paper
 ```{r}
 percentChangeBeeSRManagement$group ="Bees"
 percentChangeButterflySRManagement$group = "Butterflies"
-percentChangePlanthopperSRManagement$group = "Planthoppers"
+percentChangeLeafhopperSRManagement$group = "Leafhoppers"
 
 dat = bind_rows(percentChangeBeeSRManagement,
                 percentChangeButterflySRManagement,
-                percentChangePlanthopperSRManagement)
+                percentChangeLeafhopperSRManagement)
 dat$surveyPeriod = as.character(dat$surveyPeriod)
 dat[dat$surveyPeriod=="Survey period 1","surveyPeriod"] =1
 dat[dat$surveyPeriod=="Survey period 2","surveyPeriod"] =2
@@ -426,28 +346,28 @@ dat %>% dplyr::filter(grazingTime!="control") %>%
 fit.vegSR = modelResultsVegManagement[[1]]
 cond_mat.vegSR <- conditional_effects(fit.vegSR,"grazingTime:surveyPeriod")[[1]]
 cond_mat.vegSR$type = rep("vegSR",nrow(cond_mat.vegSR))
-cond_mat.vegSR %<>% rename(estimate = "estimate__",se="se__",lowCI = "lower__", highCI = "upper__")
+cond_mat.vegSR %<>% dplyr::rename(estimate = "estimate__",se="se__",lowCI = "lower__", highCI = "upper__")
 cond_mat.vegSR %<>% dplyr::select(type,grazingTime,surveyPeriod,estimate,se,lowCI,highCI)
 
 # flower
 fit.vegFlower = modelResultsVegManagement[[2]]
 cond_mat.vegFlower <- conditional_effects(fit.vegFlower,"grazingTime:surveyPeriod")[[1]]
 cond_mat.vegFlower$type = rep("vegFlower",nrow(cond_mat.vegFlower))
-cond_mat.vegFlower %<>% rename(estimate = "estimate__",se="se__",lowCI = "lower__", highCI = "upper__")
+cond_mat.vegFlower %<>% dplyr::rename(estimate = "estimate__",se="se__",lowCI = "lower__", highCI = "upper__")
 cond_mat.vegFlower %<>% dplyr::select(type,grazingTime,surveyPeriod,estimate,se,lowCI,highCI)
 
 # height
 fit.vegHeight = modelResultsVegManagement[[3]]
 cond_mat.vegHeight <- conditional_effects(fit.vegHeight,"grazingTime:surveyPeriod")[[1]]
 cond_mat.vegHeight$type = rep("vegHeight",nrow(cond_mat.vegHeight))
-cond_mat.vegHeight %<>% rename(estimate = "estimate__",se="se__",lowCI = "lower__", highCI = "upper__")
+cond_mat.vegHeight %<>% dplyr::rename(estimate = "estimate__",se="se__",lowCI = "lower__", highCI = "upper__")
 cond_mat.vegHeight %<>% dplyr::select(type,grazingTime,surveyPeriod,estimate,se,lowCI,highCI)
 
 # biomass
 fit.vegBiomass = modelResultsVegManagement[[4]]
 cond_mat.vegBiomass <- conditional_effects(fit.vegBiomass,"grazingTime:surveyPeriod")[[1]]
 cond_mat.vegBiomass$type = rep("vegBiomass",nrow(cond_mat.vegBiomass))
-cond_mat.vegBiomass %<>% rename(estimate = "estimate__",se="se__",lowCI = "lower__", highCI = "upper__")
+cond_mat.vegBiomass %<>% dplyr::rename(estimate = "estimate__",se="se__",lowCI = "lower__", highCI = "upper__")
 cond_mat.vegBiomass %<>% dplyr::select(type,grazingTime,surveyPeriod,estimate,se,lowCI,highCI)
 
 
@@ -591,7 +511,7 @@ m[which(grepl("surveyPeriod2",m$variable)),"surveyPeriod"] = 2
 
 # plot
 m$surveyPeriod = as.factor(m$surveyPeriod)
-m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Early summer", "2"="Mid/late summer"))
+m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Summer onset", "2"="Summer peak"))
 m$type = as.factor(m$type)
 m$type <- factor(m$type, levels = c("TD", "PD", "FD"))
 levels(m$type) <- c("Taxonomic", "Phylogenetic","Functional")
@@ -614,37 +534,12 @@ m[which(m$predictor=="nInflorescenceCoocc"),c("se_high")] =
 m = m %>% dplyr::filter(predictor=="nInflorescenceCoocc")
 
 m$predictor = as.factor(m$predictor)
-levels(m$predictor) <- c("flowers")
-
-
-beePlotVegetation = ggplot(m, aes(x = predictor,y = value,fill = type))+
-  xlab("") + ylab("Change in %") +
-  facet_grid(.~surveyPeriod) +
-  geom_hline(yintercept=0, lty=2, lwd=1, colour="black") +
-  geom_errorbar(aes(ymin=se_low,
-                    ymax=se_high,
-                    colour=type),
-                lwd=1,width=0,
-                position = position_dodge(width=0.2))+
-  geom_point(size=3, aes(colour=type),
-             position = position_dodge(width=0.2)) +
-  guides(colour=guide_legend(title="Diversity type:"),fill="none")+
-  theme(axis.title = element_text(size=18),  
-        axis.line = element_line(colour="black"),
-        axis.ticks = element_line(),
-        axis.text = element_text(size = 18, colour="black"),
-        panel.border = element_blank(),
-        title = element_text(size=22),
-        legend.text=element_text(size=18),
-        strip.text = element_text(size=18),
-        legend.position="bottom"
-        ) +
-  scale_x_discrete(labels=function(x){sub("^(\\S+)", "\\1\n", x)});beePlotVegetation
+levels(m$predictor) <- c("inflorescences")
 
 percentChangeBeeSRVegetation = m 
 
 # increase of wild bee diversity with 100 more flower
-m %>% filter(predictor=="flowers",surveyPeriod=="Mid/late summer") %>% dplyr::summarise(value=mean(value))
+m %>% filter(predictor=="inflorescences",surveyPeriod=="Summer peak") %>% dplyr::summarise(value=mean(value))
 ```
 
 
@@ -693,7 +588,7 @@ m[which(grepl("surveyPeriod2",m$variable)),"surveyPeriod"] = 2
 
 # plot
 m$surveyPeriod = as.factor(m$surveyPeriod)
-m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Early summer", "2"="Mid/late summer"))
+m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Summer onset", "2"="Summer peak"))
 m$type = as.factor(m$type)
 m$type <- factor(m$type, levels = c("TD", "PD", "FD"))
 levels(m$type) <- c("Taxonomic", "Phylogenetic","Functional")
@@ -713,44 +608,23 @@ m[which(m$predictor=="nInflorescenceCoocc"),c("se_low")] =
 m[which(m$predictor=="nInflorescenceCoocc"),c("se_high")] = 
   m[which(m$predictor=="nInflorescenceCoocc"),c("se_high")] * 100
 
+
+
+
+
 m = m %>% dplyr::filter(predictor == "nInflorescenceCoocc")
 
 m$predictor = as.factor(m$predictor)
-levels(m$predictor) <- c("flowers")
-
-
-butterflyPlotVegetation = ggplot(m, aes(x = predictor,y = value,fill = type))+
-  xlab("") + ylab("Change in %") +
-  facet_grid(.~surveyPeriod) +
-  geom_hline(yintercept=0, lty=2, lwd=1, colour="black") +
-  geom_errorbar(aes(ymin=se_low,
-                    ymax=se_high,
-                    colour=type),
-                lwd=1,width=0,
-                position = position_dodge(width=0.2))+
-  geom_point(size=3, aes(colour=type),
-             position = position_dodge(width=0.2)) +
-  guides(colour=guide_legend(title="Diversity type:"),fill="none")+
-  theme(axis.title = element_text(size=18),  
-        axis.line = element_line(colour="black"),
-        axis.ticks = element_line(),
-        axis.text = element_text(size = 18, colour="black"),
-        panel.border = element_blank(),
-        title = element_text(size=22),
-        legend.text=element_text(size=18),
-        strip.text = element_text(size=18),
-        legend.position="bottom") +
-  scale_x_discrete(labels=function(x){sub("^(\\S+)", "\\1\n", x)});butterflyPlotVegetation
+levels(m$predictor) <- c("inflorescences")
 
 percentChangeButterflySRVegetation = m
 
-
 # increase of butterfly diversity with 100 more flower
-m %>% filter(predictor=="flowers",surveyPeriod=="Mid/late summer") %>% dplyr::summarise(value=mean(value))
+m %>% filter(predictor=="inflorescences",surveyPeriod=="Summer peak") %>% dplyr::summarise(value=mean(value))
 ```
 
 
-##### Vegetation plot planthopper
+##### Vegetation plot leafhopper
 ```{r}
 fit.TD = modelResultsTDVegetation[[3]]
 fit.PD = modelResultsPDVegetation[[3]]
@@ -795,7 +669,7 @@ m[which(grepl("surveyPeriod2",m$variable)),"surveyPeriod"] = 2
 
 # plot
 m$surveyPeriod = as.factor(m$surveyPeriod)
-m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Early summer", "2"="Mid/late summer"))
+m$surveyPeriod = plyr::revalue(m$surveyPeriod, c("1"="Summer onset", "2"="Summer peak"))
 m$type = as.factor(m$type)
 m$type <- factor(m$type, levels = c("TD", "PD", "FD"))
 levels(m$type) <- c("Taxonomic", "Phylogenetic","Functional")
@@ -819,32 +693,7 @@ m =m %>%dplyr::filter(predictor == "height")
 m$predictor = as.factor(m$predictor)
 levels(m$predictor) <- c("sward height") # sward height increase by 1 cm
 
-
-
-planthopperPlotVegetation = ggplot(m, aes(x = predictor,y = value,fill = type))+
-  xlab("") + ylab("Change in %") +
-  facet_grid(.~surveyPeriod) +
-  geom_hline(yintercept=0, lty=2, lwd=1, colour="black") +
-  geom_errorbar(aes(ymin=se_low,
-                    ymax=se_high,
-                    colour=type),
-                lwd=1,width=0,
-                position = position_dodge(width=0.2))+
-  geom_point(size=3, aes(colour=type),
-             position = position_dodge(width=0.2)) +
-  guides(colour=guide_legend(title="Diversity type:"),fill="none")+
-  theme(axis.title = element_text(size=18),  
-        axis.line = element_line(colour="black"),
-        axis.ticks = element_line(),
-        axis.text = element_text(size = 18, colour="black"),
-        panel.border = element_blank(),
-        title = element_text(size=22),
-        legend.text=element_text(size=18),
-        strip.text = element_text(size=18),
-        legend.position="bottom") +
-  scale_x_discrete(labels=function(x){sub("^(\\S+)", "\\1\n", x)});planthopperPlotVegetation
-
-percentChangePlanthopperSRVegetation = m
+percentChangeLeafhopperSRVegetation = m
 ```
 
 
@@ -871,9 +720,9 @@ ggpubr::ggarrange(g1, gNULL, g2, gNULL,g3,
 
 ##### Prepare for Excel export and number of paper
 ```{r}
-percentChangeBeeSRVegetation$group ="Bees"
+percentChangeBeeSRVegetation$group ="Wild bees"
 percentChangeButterflySRVegetation$group = "Butterflies"
-percentChangePlanthopperSRVegetation$group = "Planthoppers"
+percentChangePlanthopperSRVegetation$group = "Leafhoppers"
 
 
 dat = bind_rows(percentChangeBeeSRVegetation,
@@ -885,61 +734,6 @@ dat[dat$surveyPeriod=="Survey period 2","surveyPeriod"] =2
 resultsExcelPercentChangeSRVegetation = dat
 ```
 
-
-
-
-### Combine vegetation & management plots
-```{r}
-hT = 0.5; vT = 5
-
-g1 = beePlotManagement +ylim(-90,70)+
-  ggtitle("Wild bees")+
-  theme(plot.title = element_text(hjust = hT, vjust = vT),
-        plot.margin = margin(1,0,0,0, 'cm'))
-  
-g2 = butterflyPlotManagement + ylim(-60,150) +
-  ggtitle("Butterflies")+
-    theme(plot.title = element_text(hjust = hT, vjust = vT),
-          plot.margin = margin(0.5,0,0,0, 'cm'))
-
-g3 = planthopperPlotManagement + ylim(-50,30)+   
-  ggtitle("Planthoppers")+
-    theme(plot.title = element_text(hjust = hT, vjust = vT),
-          plot.margin = margin(0.5,0,0,0, 'cm'))
-
-g4 = beePlotVegetation +ylim(-3,11)  +ylab("")+
-ggtitle("")+
-    theme(plot.title = element_text(hjust = hT, vjust = vT),
-          plot.margin = margin(1,0,0,0, 'cm'))
-
-g5 = butterflyPlotVegetation + ylim(-7,4) +ylab("")+
-ggtitle("")+
-    theme(plot.title = element_text(hjust = hT, vjust = vT),
-          plot.margin = margin(0.5,0,0,0, 'cm'))
-
-g6 = planthopperPlotVegetation+ ylim(-1,1.5)+  ylab("")+
-ggtitle("")+
-    theme(plot.title = element_text(hjust = hT, vjust = vT),
-          plot.margin = margin(0.5,0,0,0, 'cm'))
-
-
-ggpubr::ggarrange(g1, g4,
-                  g2, g5, 
-                  g3,g6,
-                  ncol=2,
-                  nrow=3,
-              common.legend = TRUE, 
-              legend="bottom",
-              align = "h",
-              #heights = c(0.5, 1),
-              widths = c(1, 0.8),
-  labels = "auto", font.label = list(size = 25))+
-  theme(plot.margin = margin(0.1,0.1,0.1,0.1, "cm")) 
-
-# save with the following settings:
-# width:2000, 20in
-# height:800, 8in
-```
 
 
 ## Export to excel
@@ -955,6 +749,20 @@ openxlsx::writeData(wb, sheet = "PercentChangeVegetation",resultsExcelPercentCha
 
 openxlsx::saveWorkbook(wb, paste("results/",gsub("-",".",Sys.Date()),
                             "-Q1_modelResults-PercentChange.xlsx",sep=""), overwrite = FALSE)
+```
+
+# Combine plot data
+Data needed to create Fig. 2
+```{r}
+dataFig2 = list(
+percentChangeBeeSRManagement = percentChangeBeeSRManagement,
+percentChangeButterflySRManagement = percentChangeButterflySRManagement,
+percentChangeLeafhopperSRManagement = percentChangeLeafhopperSRManagement,
+percentChangeBeeSRVegetation = percentChangeBeeSRVegetation,
+percentChangeButterflySRVegetation = percentChangeButterflySRVegetation,
+percentChangeLeafhopperSRVegetation = percentChangeLeafhopperSRVegetation)
+
+save(dataFig2,file="data/dataFigures_2_GLMM_percent_change.RData")
 ```
 
 

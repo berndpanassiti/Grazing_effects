@@ -49,7 +49,7 @@ ggpubr::ggarrange(
     theme(plot.title = element_text(colour = "black")),
   planthopper.cov.TD + ylab("") +
     expand_limits(y = 0) +
-    ggtitle("Planthoppers") +
+    ggtitle("Leafhoppers") +
     theme(plot.title = element_text(colour = "black")),
   
   bee.cov.PD +ylab("Phylogenetic\nnetwork diversity") +
@@ -113,7 +113,7 @@ planthopperEstFD=planthopper.est.FD
 ```{r}
 netResults = data.frame(matrix(ncol=8,nrow=9))
 colnames(netResults) = c("group","type","c_lower_e","c_lower_l","c_higher_e","c_higher_l","e_lower_l","l_lower_e")
-netResults$group = c(rep("Wildbees",3),rep("Butterflies",3),rep("Planthoppers",3))
+netResults$group = c(rep("Wildbees",3),rep("Butterflies",3),rep("Leafhoppers",3))
 netResults$type = rep(c("TD","PD","FD"),3)
 
 beeEstTD$group = "Wildbees"
@@ -124,9 +124,9 @@ butterflyEstTD$group = "Butterflies"
 butterflyEstPD$group = "Butterflies"
 butterflyEstFD$group = "Butterflies"
 
-planthopperEstTD$group = "Planthoppers"
-planthopperEstPD$group = "Planthoppers"
-planthopperEstFD$group = "Planthoppers"
+planthopperEstTD$group = "Leafhoppers"
+planthopperEstPD$group = "Leafhoppers"
+planthopperEstFD$group = "Leafhoppers"
 
 NetTD = bind_rows(beeEstTD,butterflyEstTD,planthopperEstTD)
 colnames(NetTD)[which(colnames(NetTD) =="qTD.LCL")] = "low"
@@ -159,12 +159,12 @@ NetFD %<>% dplyr::select(group,type,Assemblage,SC,Method,estimate,low,high) %>%
 
 netEstimates = bind_rows(NetTD,NetPD,NetFD)
 
-netEstimates$group <- factor(netEstimates$group, levels = c("Wildbees", "Butterflies", "Planthoppers"))
+netEstimates$group <- factor(netEstimates$group, levels = c("Wildbees", "Butterflies", "Leafhoppers"))
 netEstimates$type <- factor(netEstimates$type, levels = c("TD", "PD", "FD"))
 
 
 z = 0
-for (i in c("Wildbees","Butterflies","Planthoppers")){
+for (i in c("Wildbees","Butterflies","Leafhoppers")){
 dat = netEstimates[which(netEstimates$group==i),]
 
 for(j in c("TD","PD","FD")){
@@ -205,7 +205,7 @@ print(z)
 
 
 
-# Plot
+# Plot preparation
 dfPlot = netEstimates %>% dplyr::filter(group=="Wildbees", type=="PD")
 dfLines = dfPlot %>%dplyr::filter(Method!="Observed")
 dfPoints = dfPlot %>%dplyr::filter(Method=="Observed")
@@ -217,11 +217,10 @@ ggplot(dfPlot, aes(x=SC,ymin=low,ymax=high,fill=treatment))+
   geom_point(data = dfPoints,aes(x=SC,y=estimate), size=2, color="black")
 
 
-## Plot
 ```{r}
 # vertical lines
 vLineDf = data.frame(matrix(ncol=1,nrow=9))
-vLineDf$group = c(rep("(A) Wildbees",3),rep("(B) Butterflies",3),rep("(C) Planthoppers",3))
+vLineDf$group = c(rep("(A) Wildbees",3),rep("(B) Butterflies",3),rep("(C) Leafhoppers",3))
 vLineDf$type = rep(c("TDnet","PDnet","FDnet"),3)
 colnames(vLineDf)[1] = "x_value"
 
@@ -249,37 +248,10 @@ dfPlot$type[which(dfPlot$type == "TD")] = "TDnet"
 dfPlot$type[which(dfPlot$type == "PD")] = "PDnet"
 dfPlot$type[which(dfPlot$type == "FD")] = "FDnet"
 
-dfPlot$group <- factor(dfPlot$group, levels = c("Wild bees", "Butterflies", "Planthoppers"))
+dfPlot$group <- factor(dfPlot$group, levels = c("Wild bees", "Butterflies", "Leafhoppers"))
 dfPlot$type <- factor(dfPlot$type, levels = c("TDnet", "PDnet", "FDnet"))
 
-dfLines = dfPlot %>%dplyr::filter(Method!="Observed")
-dfPoints = dfPlot %>%dplyr::filter(Method=="Observed")
-
-# create plot
-baseplot = ggplot(dfPlot, aes(x=SC,ymin=low,ymax=high,fill=treatment))+
-  ggh4x::facet_grid2(type~group,scales = "free_y", independent = "y")+
-  labs(x="Sample coverage",y="Species-richness based estimate")+
-  geom_ribbon(alpha=.5)+
-  geom_line(data=dfLines,aes(x=SC,y=estimate,color=treatment,
-                             linetype=Method),
-  size=1)+
-  scale_linetype_manual(values=c( "dotted","solid")) +
-  #geom_vline(data = vLineDf, mapping = aes(xintercept = x_value))+
-  geom_point(data = dfPoints,aes(x=SC,y=estimate,shape = treatment,
-                                 fill = treatment), 
-             color="black",size=5,stroke = 0.2) +
-  scale_shape_manual(values = c(21,22,24)) 
-  
-  
-  p = baseplot+ mytheme + theme(
-  legend.text = element_text(size=18),
-  strip.background = element_blank(),
-  strip.placement = "outside",
-  legend.position="bottom",
-  legend.title=element_blank(),
-  strip.text = element_text(size = 20),
-  panel.spacing.x = unit(3, "lines"),
-  panel.spacing.y = unit(3, "lines"));p
+dataFig4 = dfPlot
 ```
 
 
@@ -289,6 +261,7 @@ planthopper.est.TD,
 planthopper.est.PD,
 planthopper.est.FD,
 netEstimates,
+dataFig4,
 file="results/iNext.link-Plots.RData"
 )
 ```

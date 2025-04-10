@@ -561,30 +561,30 @@ for(i in 1:nrow(modelEstimates)){
 datTD = list_rbind(modelEstimatesTDManagement, names_to = "id")
 datPD = list_rbind(modelEstimatesPDManagement, names_to = "id")
 datFD = list_rbind(modelEstimatesFDManagement, names_to = "id")
-df = bind_rows(datTD,datPD,datFD)
-df$modelType = "management" 
+dat = bind_rows(datTD,datPD,datFD)
+dat$modelType = "management" 
 
 # Intercept surveyPeriod2 year2022 elevation sp1xEarly sp2xEarly sp1xLate sp2xLate
 
 
-df  %<>% tibble::add_column(effectNoteworthy=NA)
+dat  %<>% tibble::add_column(effectNoteworthy=NA)
 
 
-for(i in 1:nrow(df)){
-  if(isTRUE(data.table::between(0,df$conf.low[i],df$conf.high[i]))){
-   df$effectNoteworthy[i] = ""}else{
-   df$effectNoteworthy[i] = "*"}
+for(i in 1:nrow(dat)){
+  if(isTRUE(data.table::between(0,dat$conf.low[i],dat$conf.high[i]))){
+   dat$effectNoteworthy[i] = ""}else{
+   dat$effectNoteworthy[i] = "*"}
 }
 
 
-df %<>% mutate(estimateNew = paste(my_signif(estimate)," (",my_signif(std.error),")",effectNoteworthy,sep=""),
+dat %<>% mutate(estimateNew = paste(my_signif(estimate)," (",my_signif(std.error),")",effectNoteworthy,sep=""),
                    conf = paste("(",my_signif(conf.low),", ",my_signif(conf.high),")",sep="")
                    )
 
-df %<>%dplyr::select(-effect,-component,-group,-modelType, -estimate,-std.error,-conf.low,-conf.high,-effectNoteworthy)
+dat %<>%dplyr::select(-effect,-component,-group,-modelType, -estimate,-std.error,-conf.low,-conf.high,-effectNoteworthy)
 
 
-df1 = df %>% pivot_wider(id_cols = id,names_from = term,values_from = c("estimateNew","conf"))
+df1 = dat %>% pivot_wider(id_cols = id,names_from = term,values_from = c("estimateNew","conf"))
 
 # renaming for columns
 names(df1) =  gsub("estimateNew_","",names(df1))
@@ -614,48 +614,87 @@ for(i in 1:nrow(df2)){
   if(any(sapply(df2[i,3:9], function(x) grepl("\\*",x)))){
    df2$effectNoteworthy[i] = 1}
 }
+df = df2
+
+# create new column modelType
+df$modelType <- sub("\\..*", "", df$id)
+
+
+# create column diversityType with values TD, PD, and FD
+df$diversityType = sub("^[^.]*\\.([^.]*)\\..*$", "\\1", df$id)
+
+# rename category planthopper2 in leafhopper
+df %<>% dplyr::mutate(modelType = recode(modelType, "planthopper" = "Leafhopper"))
+df %<>% dplyr::mutate(modelType = recode(modelType, "butterfly" = "Butterfly"))
+df %<>% dplyr::mutate(modelType = recode(modelType, "bee" = "Wild bee"))
+
+
+df %<>% dplyr::select(-id)
+df %<>% select(modelType, diversityType, everything())
+
+
+modelResultsEstimatesManagement = df
 ```
 
 
 ### Performance
+
+According to 
+performance::model_performance(x))
+Response residuals not available to calculate mean square error. (R)MSE is probably not reliable.
+
 ```{r}
 rm(.Random.seed, envir=globalenv())
 set.seed(2023)
-modelPerformanceTDManagement = modelResultsTDManagement %>% lapply(function(x) performance::model_performance(x))
-modelPerformancePDManagement = modelResultsPDManagement %>% lapply(function(x) performance::model_performance(x))
-modelPerformanceFDManagement = modelResultsFDManagement %>% lapply(function(x) performance::model_performance(x))
 
-# Response residuals not available to calculate mean square error. (R)MSE is probably not reliable.
+bayesRTDManagement = modelResultsTDManagement %>% 
+  lapply(function(x) brms::bayes_R2(x))
 
-dfModelPerformanceTDManagement = as_tibble(do.call(rbind, modelPerformanceTDManagement))
-dfModelPerformanceTDManagement$id = names(modelPerformanceTDManagement)
-dfModelPerformancePDManagement = as_tibble(do.call(rbind, modelPerformancePDManagement))
-dfModelPerformancePDManagement$id = names(modelPerformancePDManagement)
-dfModelPerformanceFDManagement = as_tibble(do.call(rbind, modelPerformanceFDManagement))
-dfModelPerformanceFDManagement$id = names(modelPerformanceFDManagement)
+looTDManagement = modelResultsTDManagement %>% 
+  lapply(function(x) brms::loo(x, save_psis = TRUE, k_threshold = 0.7,reloo=T))
 
-dfModelPerformanceManagement = bind_rows(dfModelPerformanceTDManagement,
-                                         dfModelPerformancePDManagement ,
-                                         dfModelPerformanceFDManagement)
-```
+bayesRPDManagement = modelResultsPDManagement %>% 
+  lapply(function(x) brms::bayes_R2(x))
 
-### Prepare for Excel-Export
-```{r}
-df3 = merge(df2,dfModelPerformanceManagement,by="id")
+looPDManagement = modelResultsPDManagement %>% 
+  lapply(function(x) brms::loo(x, save_psis = TRUE, k_threshold = 0.7,reloo=T))
 
-df3$group = as.character(sapply(df3$id, function(x) str_split(x,"\\.")[[1]][1]))
-df3$divType = as.character(sapply(df3$id, function(x) 
-                str_split(x,"\\.")[[1]][2]))
-df3$hillNumber = as.numeric(sapply(df3$id, function(x)
-                  gsub("q","",str_split(x,"\\.")[[1]][3])))
+bayesRFDManagement = modelResultsFDManagement %>% 
+  lapply(function(x) brms::bayes_R2(x))
 
-df3 %<>% dplyr::select(-id)
-resultsExcelManagement = arrange.vars(df3, c("group"=1, "divType"=2, "hillNumber"=3))
-
-resultsExcelManagement[,25:36] = apply(resultsExcelManagement[,25:36],2,my_signif)
+looFDManagement = modelResultsFDManagement %>% 
+  lapply(function(x) brms::loo(x, save_psis = TRUE, k_threshold = 0.7,reloo=T))
 
 
-resultsExcelManagement = as_tibble(resultsExcelManagement)
+
+
+dfModelbayesRTDManagement = as_tibble(do.call(rbind, bayesRTDManagement))
+dfModelbayesRTDManagement$id = names(bayesRTDManagement)
+
+dfModelbayesRPDManagement = as_tibble(do.call(rbind, bayesRPDManagement))
+dfModelbayesRPDManagement$id = names(bayesRPDManagement)
+
+dfModelbayesRFDManagement = as_tibble(do.call(rbind, bayesRFDManagement))
+dfModelbayesRFDManagement$id = names(bayesRFDManagement)
+
+
+bayesrResultManagement = bind_rows(
+                          dfModelbayesRTDManagement,
+                          dfModelbayesRPDManagement,
+                          dfModelbayesRFDManagement)
+
+bayesrResultManagement$type = "Management"
+
+looTD = lapply(looTDManagement, function(x) x$estimates[1,1])
+looTDdf = data.frame(unlist(looTD));colnames(looTDdf) = "elpd_loo"
+looPD = lapply(looPDManagement, function(x) x$estimates[1,1])
+looPDdf = data.frame(unlist(looPD));colnames(looPDdf) = "elpd_loo"
+looFD = lapply(looFDManagement, function(x) x$estimates[1,1])
+looFDdf = data.frame(unlist(looFD));colnames(looFDdf) = "elpd_loo"
+
+looResultManagement = rbind(looTDdf,looPDdf,looFDdf)
+looResultManagement$id = rownames(looResultManagement)
+looResultManagement$type = "Management"
 ```
 
 
@@ -665,30 +704,30 @@ resultsExcelManagement = as_tibble(resultsExcelManagement)
 datTD = list_rbind(modelEstimatesTDVegetation, names_to = "id")
 datPD = list_rbind(modelEstimatesPDVegetation, names_to = "id")
 datFD = list_rbind(modelEstimatesFDVegetation, names_to = "id")
-df = bind_rows(datTD,datPD,datFD)
-df$modelType = "vegetation" 
+dat = bind_rows(datTD,datPD,datFD)
+dat$modelType = "vegetation" 
 
 # Intercept surveyPeriod2 year2022 elevation sp1xEarly sp2xEarly sp1xLate sp2xLate
 
 
-df  %<>% tibble::add_column(effectNoteworthy=NA)
+dat  %<>% tibble::add_column(effectNoteworthy=NA)
 
 
-for(i in 1:nrow(df)){
-  if(isTRUE(data.table::between(0,df$conf.low[i],df$conf.high[i]))){
-   df$effectNoteworthy[i] = ""}else{
-   df$effectNoteworthy[i] = "*"}
+for(i in 1:nrow(dat)){
+  if(isTRUE(data.table::between(0,dat$conf.low[i],dat$conf.high[i]))){
+   dat$effectNoteworthy[i] = ""}else{
+   dat$effectNoteworthy[i] = "*"}
 }
 
 
-df %<>% mutate(estimateNew = paste(my_signif(estimate)," (",my_signif(std.error),")",effectNoteworthy,sep=""),
+dat %<>% mutate(estimateNew = paste(my_signif(estimate)," (",my_signif(std.error),")",effectNoteworthy,sep=""),
                    conf = paste("(",my_signif(conf.low),", ",my_signif(conf.high),")",sep="")
                    )
 
-df %<>%dplyr::select(-effect,-component,-group,-modelType, -estimate,-std.error,-conf.low,-conf.high,-effectNoteworthy)
+dat %<>%dplyr::select(-effect,-component,-group,-modelType, -estimate,-std.error,-conf.low,-conf.high,-effectNoteworthy)
 
 
-df1 = df %>% pivot_wider(id_cols = id,names_from = term,values_from = c("estimateNew","conf"))
+df1 = dat %>% pivot_wider(id_cols = id,names_from = term,values_from = c("estimateNew","conf"))
 
 # renaming for columns
 names(df1) =  gsub("estimateNew_","",names(df1))
@@ -698,14 +737,14 @@ df2 = df1%>%dplyr::rename(
   sp1xInflor='surveyPeriod1:nInflorescenceCoocc',
   sp2xInflor='surveyPeriod2:nInflorescenceCoocc',
   sp1xHeight='surveyPeriod1:height',
-  sp2xHeight='surveyPeriod1:height',
+  sp2xHeight='surveyPeriod2:height',
   sd_Intercept = 'sd__(Intercept)',
   sd_Obs = 'sd__Observation',
   conf_Intercept = 'conf_(Intercept)',
   conf_sp1xInflor='conf_surveyPeriod1:nInflorescenceCoocc',
   conf_sp2xInflor='conf_surveyPeriod2:nInflorescenceCoocc',
   conf_sp1xHeight='conf_surveyPeriod1:height',
-  conf_sp2xHeight='conf_surveyPeriod1:height',
+  conf_sp2xHeight='conf_surveyPeriod2:height',
   conf_sd_Intercept = 'conf_sd__(Intercept)',              
   conf_sd_Obs = 'conf_sd__Observation'              
 )
@@ -718,63 +757,157 @@ for(i in 1:nrow(df2)){
   if(any(sapply(df2[i,3:9], function(x) grepl("\\*",x)))){
    df2$effectNoteworthy[i] = 1}
 }
+
+df = df2
+
+# create new column modelType
+df$modelType <- sub("\\..*", "", df$id)
+
+
+# create column diversityType with values TD, PD, and FD
+df$diversityType = sub("^[^.]*\\.([^.]*)\\..*$", "\\1", df$id)
+
+# rename category planthopper2 in leafhopper
+df %<>% dplyr::mutate(modelType = recode(modelType, "planthopper" = "Leafhopper"))
+df %<>% dplyr::mutate(modelType = recode(modelType, "butterfly" = "Butterfly"))
+df %<>% dplyr::mutate(modelType = recode(modelType, "bee" = "Wild bee"))
+
+
+df %<>% dplyr::select(-id)
+df %<>% select(modelType, diversityType, everything())
+
+modelResultsEstimatesVegetation = df
 ```
 
 
 ### Performance
+
 ```{r}
 rm(.Random.seed, envir=globalenv())
 set.seed(2023)
-modelPerformanceTDVegetation = modelResultsTDVegetation %>% lapply(function(x) performance::model_performance(x))
-modelPerformancePDVegetation = modelResultsPDVegetation %>% lapply(function(x) performance::model_performance(x))
-modelPerformanceFDVegetation = modelResultsFDVegetation %>% lapply(function(x) performance::model_performance(x))
 
-# Response residuals not available to calculate mean square error. (R)MSE is probably not reliable.
+bayesRTDVegetation = modelResultsTDVegetation %>% 
+  lapply(function(x) brms::bayes_R2(x))
 
-dfModelPerformanceTDVegetation = as_tibble(do.call(rbind, modelPerformanceTDVegetation))
-dfModelPerformanceTDVegetation$id = names(modelPerformanceTDVegetation)
-dfModelPerformancePDVegetation = as_tibble(do.call(rbind, modelPerformancePDVegetation))
-dfModelPerformancePDVegetation$id = names(modelPerformancePDVegetation)
-dfModelPerformanceFDVegetation = as_tibble(do.call(rbind, modelPerformanceFDVegetation))
-dfModelPerformanceFDVegetation$id = names(modelPerformanceFDVegetation)
+looTDVegetation = modelResultsTDVegetation %>% 
+  lapply(function(x) brms::loo(x, save_psis = TRUE, k_threshold = 0.7,reloo=T))
 
-dfModelPerformanceVegetation = bind_rows(dfModelPerformanceTDVegetation,
-                                         dfModelPerformancePDVegetation,
-                                         dfModelPerformanceFDVegetation)
+bayesRPDVegetation = modelResultsPDVegetation %>% 
+  lapply(function(x) brms::bayes_R2(x))
+
+looPDVegetation = modelResultsPDVegetation %>% 
+  lapply(function(x) brms::loo(x, save_psis = TRUE, k_threshold = 0.7,reloo=T))
+
+bayesRFDVegetation = modelResultsFDVegetation %>% 
+  lapply(function(x) brms::bayes_R2(x))
+
+looFDVegetation = modelResultsFDVegetation %>% 
+  lapply(function(x) brms::loo(x, save_psis = TRUE, k_threshold = 0.7,reloo=T))
+
+
+
+
+dfModelbayesRTDVegetation = as_tibble(do.call(rbind, bayesRTDVegetation))
+dfModelbayesRTDVegetation$id = names(bayesRTDVegetation)
+
+dfModelbayesRPDVegetation = as_tibble(do.call(rbind, bayesRPDVegetation))
+dfModelbayesRPDVegetation$id = names(bayesRPDVegetation)
+
+dfModelbayesRFDVegetation = as_tibble(do.call(rbind, bayesRFDVegetation))
+dfModelbayesRFDVegetation$id = names(bayesRFDVegetation)
+
+
+bayesrResultVegetation = bind_rows(
+                          dfModelbayesRTDVegetation,
+                          dfModelbayesRPDVegetation,
+                          dfModelbayesRFDVegetation)
+
+bayesrResultVegetation$type ="Vegetation"
+
+looTD = lapply(looTDVegetation, function(x) x$estimates[1,1])
+looTDdf = data.frame(unlist(looTD));colnames(looTDdf) = "elpd_loo"
+looPD = lapply(looPDVegetation, function(x) x$estimates[1,1])
+looPDdf = data.frame(unlist(looPD));colnames(looPDdf) = "elpd_loo"
+looFD = lapply(looFDVegetation, function(x) x$estimates[1,1])
+looFDdf = data.frame(unlist(looFD));colnames(looFDdf) = "elpd_loo"
+
+looResultVegetation = rbind(looTDdf,looPDdf,looFDdf)
+looResultVegetation$id = rownames(looResultVegetation)
+looResultVegetation$type ="Vegetation"
 ```
+
+
+
 
 ### Prepare for Excel-Export
+
+### Combine tables
 ```{r}
-df3 = merge(df2,dfModelPerformanceVegetation,by="id")
+bayesrResult = bind_rows(bayesrResultManagement,bayesrResultVegetation)
+looResult = bind_rows(looResultManagement,looResultVegetation)
 
-df3$group = as.character(sapply(df3$id, function(x) str_split(x,"\\.")[[1]][1]))
-df3$divType = as.character(sapply(df3$id, function(x) 
-                str_split(x,"\\.")[[1]][2]))
-df3$hillNumber = as.numeric(sapply(df3$id, function(x)
-                  gsub("q","",str_split(x,"\\.")[[1]][3])))
-
-df3 %<>% dplyr::select(-id)
-resultsExcelVegetation= arrange.vars(df3, c("group"=1, "divType"=2, "hillNumber"=3))
-
-resultsExcelVegetation[,25:36] = apply(resultsExcelVegetation[,25:36],2,my_signif)
-
-
-resultsExcelVegetation = as_tibble(resultsExcelVegetation)
+modelPerformance <- dplyr::inner_join(bayesrResult, looResult, by = c("id", "type"))
 ```
+
+
+
+Table contains bayes R and elpd loo values
+```{r}
+df = modelPerformance
+
+# create new column modelType
+df$modelType <- sub("\\..*", "", df$id)
+
+
+# create column diversityType with values TD, PD, and FD
+df$diversityType = sub("^[^.]*\\.([^.]*)\\..*$", "\\1", df$id)
+
+# rename category planthopper2 in leafhopper
+df %<>% dplyr::mutate(modelType = recode(modelType, "planthopper" = "Leafhopper"))
+df %<>% dplyr::mutate(modelType = recode(modelType, "butterfly" = "Butterfly"))
+df %<>% dplyr::mutate(modelType = recode(modelType, "bee" = "Wild bee"))
+
+
+df %<>% dplyr::select(-id)
+df %<>% select(type,modelType, diversityType, everything())
+
+
+df$Estimate  = round(df$Estimate,2)
+df$Q2.5      = round(df$Q2.5,2)
+df$Q97.5     = round(df$Q97.5,2)
+df$Est.Error = my_signif(df$Est.Error,3)
+
+
+resultsExcelPerformanceManagement = df %>%
+                              dplyr::filter(type == "Management") %>%
+                              dplyr::select(!type)           
+
+resultsExcelPerformanceVegetation = df %>%
+                              dplyr::filter(type == "Vegetation") %>%
+                              dplyr::select(!type)  
+```
+
 
 
 
 ## Export to excel
+
 ```{r}
 wb <- openxlsx::createWorkbook()
 
-openxlsx::addWorksheet(wb, "Management")
-openxlsx::addWorksheet(wb, "Vegetation")
-openxlsx::writeData(wb, sheet = "Management",resultsExcelManagement)
-openxlsx::writeData(wb, sheet = "Vegetation",resultsExcelVegetation)
+openxlsx::addWorksheet(wb, "Management - Estimates")
+openxlsx::addWorksheet(wb, "Management - Performance")
+openxlsx::addWorksheet(wb, "Vegetation - Estimates")
+openxlsx::addWorksheet(wb, "Vegetation - Performance")
+
+openxlsx::writeData(wb, sheet = "Management - Estimates",modelResultsEstimatesManagement)
+openxlsx::writeData(wb, sheet = "Management - Performance",resultsExcelPerformanceManagement)
+openxlsx::writeData(wb, sheet = "Vegetation - Estimates",modelResultsEstimatesVegetation)
+openxlsx::writeData(wb, sheet = "Vegetation - Performance",resultsExcelPerformanceVegetation)
 
 openxlsx::saveWorkbook(wb, paste("results/",gsub("-",".",Sys.Date()),
-                            "-Q1_modelResults-Estimates-Performance.xlsx",sep=""), overwrite = FALSE)
+                            "-Q1_modelResults-Estimates-Performance.xlsx",sep=""),
+                       overwrite = FALSE)
 ```
 
 
@@ -785,15 +918,18 @@ save(model_data,
      # insect response, management predictors
      modelResultsTDManagement,modelResultsFDManagement,modelResultsPDManagement,
      modelEstimatesTDManagement,modelEstimatesPDManagement,modelEstimatesFDManagement,
-     resultsExcelManagement,
      beePlotManagement,butterflyPlotManagement,planthopperPlotManagement,
      
      # insect response, vegetation predictors
      modelResultsTDVegetation,modelResultsFDVegetation,modelResultsPDVegetation,
      modelEstimatesTDVegetation,modelEstimatesPDVegetation,modelEstimatesFDVegetation,
-     resultsExcelVegetation,
+
+     # Estimates and performances
+     modelResultsEstimatesManagement,
+     resultsExcelPerformanceManagement,
+     modelResultsEstimatesVegetation,
+     resultsExcelPerformanceVegetation,
      
-     modelEstimates, # table with combined estimates from management and vegetation model
      
      # vegetation response, management predictors
      modelResultsVegManagement,
