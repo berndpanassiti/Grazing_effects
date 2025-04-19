@@ -697,37 +697,16 @@ percentChangeLeafhopperSRVegetation = m
 ```
 
 
-
-
-##### Combine vegetation plots
-```{r}
-g1 = beePlotVegetation +ylim(-3,11) + 
-  ggtitle("Wildbees")
-g2 = butterflyPlotVegetation + ylim(-5,4) +  ylab("") + 
-  ggtitle("Butterflies")
-g3 = planthopperPlotVegetation+ ylim(-2.5,4)+  ylab("") + 
-  ggtitle("Planthoppers")
-
-gNULL = ggplot() + theme_void()
-
-ggpubr::ggarrange(g1, gNULL, g2, gNULL,g3,
-                  ncol=5,
-                  common.legend = TRUE, legend="bottom",
-                  widths = c(1, 0.00001, 1, 0.00001, 1),
-  labels = c("(A)","" ,"(B)","", "(C)"))
-```
-
-
 ##### Prepare for Excel export and number of paper
 ```{r}
 percentChangeBeeSRVegetation$group ="Wild bees"
 percentChangeButterflySRVegetation$group = "Butterflies"
-percentChangePlanthopperSRVegetation$group = "Leafhoppers"
+percentChangeLeafhopperSRVegetation$group = "Leafhoppers"
 
 
 dat = bind_rows(percentChangeBeeSRVegetation,
                 percentChangeButterflySRVegetation,
-                percentChangePlanthopperSRVegetation)
+                percentChangeLeafhopperSRVegetation)
 dat$surveyPeriod = as.character(dat$surveyPeriod)
 dat[dat$surveyPeriod=="Survey period 1","surveyPeriod"] =1
 dat[dat$surveyPeriod=="Survey period 2","surveyPeriod"] =2

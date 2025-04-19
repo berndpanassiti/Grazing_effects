@@ -496,7 +496,7 @@ ggpubr::ggarrange(plotVeg1,ggplot() + theme_void(), plotVeg2, ncol=3, nrow=1, co
 ```{r}
 dfPlot2 =  dfPlot %>% 
   dplyr::filter(variable %in% c("nInflorescenceCoocc")) %>%
-  dplyr::filter(survey_period==2)
+  dplyr::filter(survey_period=="summer~peak")
 
 
 plotVeg2=dfPlot2 %>%
@@ -597,20 +597,20 @@ df_aov <- dfPlot %>%
   dplyr::mutate(.data = .,
                 aov_results = data %>% purrr::map(.x = ., .f = ~ summary(aov(value ~ grazing_time, data = .))))
 
+aov_results_named <- setNames(df_aov$aov_results, df_aov$variable)
 
-lapply(seq_along(df_aov$aov_results), function(i) df_aov$aov_results[[i]])
 
 # inflorescences and height
 
 df_aov_PostHoc <- dfPlot %>%
-  dplyr::filter(variable %in% c("nInflorescenceCoocc","height"), survey_period==2)%>%
+  dplyr::filter(variable %in% c("nInflorescenceCoocc","height"), survey_period=="summer~peak")%>%
   dplyr::group_by(variable) %>%
   tidyr::nest() %>%
   dplyr::mutate(.data = .,
                 aov_results = data %>% purrr::map(.x = ., .f = ~ TukeyHSD(aov(value ~ grazing_time, data = .))))
 
 
-lapply(seq_along(df_aov_PostHoc$aov_results), function(i) df_aov_PostHoc$aov_results[[i]])
+aov_results_PostHoc_named <- setNames(df_aov_PostHoc$aov_results, df_aov_PostHoc$variable)
 ```
 
 Annova showed only sig. differences for inflorescences and sward height in summer peak
@@ -657,7 +657,7 @@ dfVeg = na.omit(dfVeg)
 groupLabel = c(
   expression(paste(atop('Species', 'richness'))),
   expression(paste(atop('Cover of', 'grasses (%)'))),
-  expression(paste(atop('Number of', 'herbs (%)'))),
+  expression(paste(atop('Cover of', 'herbs (%)'))),
   expression(paste(atop('Number of', 'infloresences'))),
   expression(paste(atop('Sward','height (cm)'))))
 
@@ -697,7 +697,6 @@ dfPlot <- dfPlot %>%
   mutate(survey_period     = factor(survey_period,  labels = groupLabel2))
 
 
-
 dataFigS1 = dfPlot
 FigS1=dataFigS1 %>% 
 ggplot(aes(y = value, x = Label,fill=grazing_time))+
@@ -720,7 +719,7 @@ ggplot(aes(y = value, x = Label,fill=grazing_time))+
   geom_point(stat = 'summary', fun = 'mean',col="red");FigS1
 ```
 
-
+# Save figure data
 ```{r}
 save(dataFigS1,dataFigS2,
      file="data/dataFigures_1_DescriptiveAnalyses.RData")
