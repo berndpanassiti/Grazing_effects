@@ -1,2 +1,2 @@
-This repository contains the r-code to carry out all analyses to the manuscript "Timing of grazing affects the diversity of insect communities and insect-plant interactions in mountain grasslands".
-Raw data to run the analyses are provided in the file server figshare: https://figshare.com/s/528daaa5db3de1a1b8ae.
+This repository contains the r-code to carry out all analyses to the manuscript "Effects of the timing of grazing on the diversity of insect communities and insect-plant interactions in mountain grasslands".
+Raw data to run the analyses are provided in the file server figshare: https://figshare.com/projects/Effects_of_the_timing_of_grazing_on_the_diversity_of_insect_communities_and_insect-plant_interactions_in_mountain_grasslands/228378.
